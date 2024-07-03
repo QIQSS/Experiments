@@ -2,7 +2,7 @@
 import sys
 sys.path.append('C:\Codes\QIQSS-CODE\experiments')
 from Pulses.Builder import *
-from utils import *
+from MyUtils import *
 
 from pyHegel.commands import *
 
