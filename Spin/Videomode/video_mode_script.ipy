@@ -1,0 +1,281 @@
+# %% 
+"""
+testing video mode trigger schemes
+"""
+# %% resources
+#https://qtt.readthedocs.io/en/latest/notebooks/measurements/example_videomode.html
+# %% ipython setup and imports
+%load_ext autoreload
+%autoreload 2
+%gui qt
+
+
+from pyHegel.commands import *
+_init_pyHegel_globals()
+
+
+import numpy as np
+from scipy.ndimage import gaussian_filter1d
+
+LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
+LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
+
+
+%cd $LAB_SCRIPT_PATH/Spin/
+from MyUtils import *
+from Pulses.Builder import *
+from Videomode.VideoModeWindow import VideoModeWindow
+
+
+# %% dummy vm
+vm1 = VideoModeWindow(dim=1, axes_dict={'x':[0.2, 0.5]}, sec_between_frame=0.1)
+vm2 = VideoModeWindow(dim=2, axes_dict={'x':[0.2, 0.5], 'y':[1.1, 1.6]}, sec_between_frame=0.1)
+
+# %% Load pyHegel instrument
+
+bilt_8 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=8)
+
+bilt_9 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=9)
+P1 = instruments.LimitDevice((bilt_9.ramp, {'ch': 1}), min=-3.0, max=3.0)
+B1 = instruments.LimitDevice((bilt_9.ramp, {'ch': 2}), min=-3.0, max=3.0)
+P2 = instruments.LimitDevice((bilt_9.ramp, {'ch': 3}), min=-3.0, max=3.0)
+B2 = instruments.LimitDevice((bilt_9.ramp, {'ch': 4}), min=-3.0, max=3.0)
+gates = lambda: [P1.get(), B1.get(), P2.get(), B2.get()]
+
+ats = instruments.ATSBoard(systemId=1, cardId=1)
+ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
+
+awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
+gain = awg.gain = 1/(0.02512)*0.4
+
+# %% bilt8 dummy setup
+bi = bilt_8
+bi.output_en.set(False)
+bi.trigger_mode.set('TRIG')
+bi.level.set(0)
+bi.range.set(12)
+bi.output_en.set(True)
+bi = bilt_9
+
+# %% bilt9 setup
+bilt_9.current_channel.set(3) #ch1:P1, ch3:P2
+bilt_9.ramp.set(0)
+bilt_9.output_en.set(False) # GROUND SAMPLE FIRST !
+bilt_9.trigger_mode.set('TRIG')
+bilt_9.range.set(12)
+bilt_9.output_en.set(True)
+bi = bilt_9
+
+# %% map full awg, ch1 alternate steps and ch2 ramps
+x_step_time, nb_step = 0.02, 20
+x_range = 0.005
+ramp = 0.02
+
+# pulse shaping
+sync = Segment(duration=0.02)
+stair = Pulse(sync)
+ramps = Pulse(sync)
+for i, x_val in enumerate(np.linspace(x_range, 0, nb_step)):
+    sign = {0:-1, 1:1}[i%2]
+    stair.addSegment(Segment(duration=x_step_time, offset=sign*x_val, mark=(0,1)))
+    ramps.addSegment(Segment(duration=x_step_time, waveform=(Ramp(-ramp, +ramp))))
+sendSeqToAWG(awg, stair, gain, channel=1, plot=False, run_after=False, awg_sr=10e4)
+sendSeqToAWG(awg, ramps, gain, channel=2, plot=False, run_after=True, awg_sr=10e4)
+
+
+# ats
+ats.nbwindows.set(1)
+ats.acquisition_length_sec.set(x_step_time*(nb_step+1))
+
+# get functions
+def get1d():
+    d = ats.readval_all.get()[2]
+    return d
+def get2d():
+    d = get1d()[:int(ats.sample_rate.get()*x_step_time*nb_step)]
+    d = d.reshape((nb_step, -1))
+    d = np.concatenate((d[0::2], np.flip(d[1::2])))
+    return d
+
+# %%
+vm = VideoModeWindow(fn_get=get2d, dim=2, 
+                     axes_dict={'x':[-x_range, +x_range], 'y':[-ramp, +ramp]}, 
+                     sec_between_frame=0.0001)
+
+
+
+
+# %% map ramp bilt ramp up/down while ramps awg
+stair_range = {'start': 0.6, 'stop': 0.9}
+ramp_range, ramp_time, nb_step = 0.040, 0.020, 31
+print(f"ramp time: {ramp_time*nb_step}")
+
+# bilt conf
+setattr(bi, '_vm_state', 'start')
+channel_bilt_stair = 1  #ch1:P1, ch3:P2
+bi.current_channel.set(channel_bilt_stair)
+bi.trigger_edge_falling_en.set(False)
+bi.slope.set(abs(stair_range['start']-stair_range['stop'])/(ramp_time*nb_step))
+
+# ats conf
+ats.nbwindows.set(1)
+ats.trigger_slope_1.set('ascend')
+ats.trigger_slope_2.set('ascend')
+ats.trigger_level_1.set(1000)
+ats.sample_rate.set(100000)
+ats.acquisition_length_sec.set(nb_step*ramp_time)
+ats.ConfigureBoard()
+
+# pulse shaping
+sync = Segment(duration=0.15)
+stair = Pulse(sync)
+ramps = Pulse(sync)
+for i in range(nb_step):
+    stair.addSegment(Segment(duration=ramp_time, waveform=(Ramp(0.00,0)), offset=0, mark=(0,1)))
+    ramps.addSegment(Segment(duration=ramp_time, waveform=(Ramp(-ramp_range, +ramp_range)), mark=(0,1)))
+sendSeqToAWG(awg, stair, gain, channel=1, plot=False, run_after=False, awg_sr=10e3) #ch1:P1, ch2:P2
+#sendSeqToAWG(awg, stair, gain, channel=2, plot=False, run_after=True, awg_sr=10e3) #ch1:P1, ch2:P2
+sendSeqToAWG(awg, ramps, gain, channel=2, plot=False, run_after=True, awg_sr=10e3) #ch1:P1, ch2:P2
+
+def switch_direction():
+    if bi._vm_state == 'start':
+        print('going to stop')
+        bi.level.set(stair_range['stop'],trig=False)
+        bi._vm_state = 'stop'
+        return False
+    else:
+        print('returning to start')
+        bi.level.set(stair_range['start'],trig=False)
+        bi._vm_state = 'start'
+        return True
+
+def ats_get1d():
+    flip = switch_direction()
+    flat_map = ats.readval.get()[2]
+    flat_map = gaussian_filter1d(flat_map, 20)
+    if flip: 
+        flat_map = np.flip(flat_map)
+        return None # for no updown
+    return flat_map
+
+def ats_get2d():
+    flip = switch_direction()
+    flat_map = ats.readval.get()[2]
+    flat_map = flat_map[:len(flat_map)-len(flat_map)%nb_step] # remove few last points
+    map_ = flat_map.reshape((nb_step, -1))
+    if flip: 
+        if flip: map_ = np.flip(map_, axis=0)
+        return None # for no updown
+    map_ = gaussianLineByLine(map_, sigma=10)
+    return map_.T
+
+def stair_shift(direction, step=0.005):
+    print(direction, step)
+    stair_range['start'] = stair_range['start'] + direction*step
+    stair_range['stop'] = stair_range['stop'] + direction*step
+
+def ramp_shift(direction, step):
+    current_val = P1.get()
+    P1.set(current_val + direction*step)
+    
+    
+
+#%%
+vm = VideoModeWindow(fn_get=ats_get1d, dim=1, axes_dict={'x':[stair_range['start'], stair_range['stop']]}, fn_xshift=x_shift, sec_between_frame=0.00)
+vm = VideoModeWindow(fn_get=ats_get2d, dim=2, axes_dict={'y':[stair_range['start'], stair_range['stop']], 'x':[-ramp_range, ramp_range]}, fn_xshift=None, fn_yshift=stair_shift, sec_between_frame=0.000)
+
+
+
+
+
+# %% 18-07 steps remote head
+
+rhP1 = bi3 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
+rhP2 = bi1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
+
+bi = bi3
+bi.output_en.set(False)
+bi.range_auto_en.set(False)
+bi.range.set(12)
+bi.filter_fast_en.set(True)
+bi.trigger_mode.set('AUTO')
+bi.level.set(0)
+bi.output_en.set(True)
+
+#%%
+
+step_range = {'start':0.78, 'stop':0.82}
+step_nb, step_time = 56, 0.02
+ramp_range = 100e-3
+
+step_sync_time = step_time*0.2
+step_amplitude = abs(step_range['start']-step_range['stop'])/step_nb
+
+bi.step_amplitude.set(step_amplitude)
+bi.trigger_delay.set( (step_time + step_sync_time) * 1e3) #in ms, timelength of the READY signal
+bi._vm_state = 'start'
+
+ats.sample_rate.set(100000)
+ats.trigger_level_1.set(1000)
+ats.ConfigureBoard()
+ats.nbwindows.set(step_nb)
+ats.acquisition_length_sec.set(step_time)
+ats.trigger_delay.set(0)
+step_nb_sample = ats.samples_per_record.get()
+
+awg.write('TRIGger:IMPedance 2000')
+
+
+pulse_map = Pulse(Segment(duration=step_time, mark=(0.5,1)))
+pulse_ramp = Pulse(Segment(duration=step_sync_time), 
+                   Segment(duration=step_time, waveform=Ramp(-ramp_range, +ramp_range), mark=(0,0.5)),
+                   Segment(duration=step_sync_time))
+sendSeqToAWG(awg, pulse_map, gain, channel=1, plot=False, run_after=False, awg_sr=10e5)
+sendSeqToAWG(awg, pulse_ramp, gain, channel=2, plot=False, run_after=True, awg_sr=10e5)
+#sendSeqToAWG(awg, pulse_ramp, gain, channel=3, plot=False, run_after=True, awg_sr=20e5)
+
+bi.level.set(step_range['start'])
+awg.write('TRIGger BTRigger') # force b trigger (start ch1)
+
+bi.level.set(step_range['stop'])
+awg.write('TRIGger BTRigger')
+
+
+def switch_direction():
+    destination = {'start':'stop', 'stop':'start'}[bi._vm_state]
+    print(f"going to {destination}")
+    bi.level.set(step_range[destination])
+    bi._vm_state = destination
+    return destination == 'start' # True if going to start
+
+def step_shift(direction, step=0.005):
+    step_range['start'] = step_range['start'] + direction*step
+    step_range['stop'] = step_range['stop'] + direction*step
+    print(step_range)
+
+def ats_get1d():
+    flip = switch_direction()
+    awg.write('TRIGger BTRigger')
+    flat_map = ats.readval_all.get()[2]
+    flat_map = flat_map.reshape(-1, ats.samples_per_record.get())[:-1].flatten() # for remove last step
+    flat_map = gaussian_filter1d(flat_map, 20)
+    if flip: 
+        flat_map = np.flip(flat_map)
+        #return None # for no updown
+    return flat_map
+
+def ats_get2d():
+    flip = switch_direction()
+    awg.write('TRIGger BTRigger')
+    flat_map = ats.readval_all.get()[2]
+    flat_map = flat_map.reshape(-1, ats.samples_per_record.get())[:-1].flatten() # for remove last step
+    map_ = flat_map.reshape((step_nb-1, -1))
+    if flip: 
+        if flip: map_ = np.flip(map_, axis=0)
+        #return None # for no updown
+    map_ = gaussianLineByLine(map_, sigma=10)
+    return map_.T
+
+# %%
+vm = VideoModeWindow(fn_get=ats_get1d, dim=1, axes_dict={'x':[step_range['start'], step_range['stop']]}, sec_between_frame=0.00)
+vm = VideoModeWindow(fn_get=ats_get2d, dim=2, axes_dict={'y':[step_range['start'], step_range['stop']], 'x':[-ramp_range, +ramp_range]}, fn_yshift=step_shift, sec_between_frame=0.00)

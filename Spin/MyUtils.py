@@ -1,4 +1,4 @@
-import time
+import time as timemodule
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import ndimage
@@ -10,7 +10,7 @@ from pyHegel.instruments_base import BaseInstrument
 
 from Pulses.Builder import *
 
-
+import threading
 #### INSTRUMENTS ####
 
     
@@ -52,26 +52,50 @@ def getATSImage(ats, with_time=False):
     return ret
 
 #awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
-def sendSeqToAWG(awg, sequence, gain=1/(0.02512), channel=1, awg_sr=32e4, wv_name='waveform', plot=False, run_after=True):
-    """ Stop the awg then send the sequence (object from Pulse code) to the awg
+def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4, 
+                 wv_name='waveform', plot=False, run_after=True, close_channel=None,
+                 round_nbpts_to_mod64=None):
+    """ Stop the awg then send the sequence (object from Pulse code) to the awg.
+    gain can be None and will be set to awg.gain if it exists or this value if not: 1/(0.02512)*0.4
     If run_after: it play the wave after sending it.
+    If close_channel = 1 (2), close the channel 1 (2) before sending the wave.
+    nbpts_mod64: 'last' | 'zeros' | num, pad wave to be a multiple of 64.
     """
     wv_name += '_' + str(channel)
     wave = sequence.getWaveNormalized(awg_sr)
     wave_max_val = max(abs(sequence.getWave(awg_sr)))
     marks = sequence.getMarks(awg_sr, val_low=1, val_high=-1)
     
+    if round_nbpts_to_mod64:
+        padding_val = {'zeros':0, 'last':wave[-1]}.get(round_nbpts_to_mod64, round_nbpts_to_mod64)
+        
+        nb_padding_points = 64 - (len(wave) % 64)
+        wave = np.concatenate((wave, np.ones(nb_padding_points)*padding_val))
+        marks = np.concatenate((marks, np.ones(nb_padding_points)*marks[-1]))
+    
+    if gain is None:
+        gain = getattr(awg, 'gain', None)
+    if gain is None:
+        gain = 1/(0.02512)*0.4
+    
     awg.run(False)
     awg.waveform_create(wave, wv_name, sample_rate=awg_sr, amplitude=2*wave_max_val*gain, force=True)
     awg.waveform_marker_data.set(marks, wfname=wv_name)
     awg.channel_waveform.set(wv_name,ch=channel)
     awg.volt_ampl.set(2*wave_max_val*gain, ch=channel)
-    
+
+        
     awg.sample_rate.set(awg_sr)
+    awg.current_channel.set(channel)
     awg.current_wfname.set(wv_name)
+
     
     if run_after: awg.run(True)
     
+    if close_channel:
+        awg.current_channel.set(close_channel)
+        awg.output_en.set(False)
+        
     if plot:
         plt.figure()
         plt.plot(wave)
@@ -111,54 +135,40 @@ def manualSweep(dev_sw, points, out_function, plot=False):
         out.append(out_function())
     if plot:
         plt.plot(points, out)
-    return out
+    return np.array(out)
 
-def feedbackSET(st_dev, st_init, read_dev, read_val_init, slope, verbose=False):
-    """ wip
+def autoFindBestST(ST, st_points, P1, p1_trans_val, zi_lambda, offset=0.005, show_plot=True):
+    """ Does a sweep of ST for P1=p1_trans_val+offset and -offset.
+    The ST sweep values are: ST.get()-offset ->ST.get()+offset
+    Then returns the optimal value for ST
+    # %% Find best ST example
+    st_points = np.linspace(3.07, 3.09, 101)
+    p1_trans_val = 0.826
+    st_val = autoFindBestST(ST, st_points, P1, p1_trans_val, zi_get, offset=0.005, show_plot=True)
+
     """
-    st_val = st_dev.get()
-    read_val = read_dev.getcache()
-
-    # calculate the error
-    delta_st_val = ( read_val - read_val_init ) / slope
-    new_st_val = delta_st_val + st_val
+    # my things
+    # 1 sweep P1 pour trouver la transition
+    p1_1, p1_2 = p1_trans_val + offset, p1_trans_val - offset
+    P1.set(p1_1)
+    print(f"sweeping ST for P1={p1_1}")
+    ST_1 = manualSweep(ST, st_points, zi_lambda)
+    P1.set(p1_2)
+    print(f"sweeping ST for P1={p1_2}")
+    ST_2 = manualSweep(ST, st_points, zi_lambda)
+    delta_ST = np.abs(ST_1 - ST_2)
+    delta_max = np.argmax(delta_ST)
+    ST_max = st_points[delta_max]
+    print(f"Found the optimal ST to be: {ST_max}")
     
-    st_dev.set(new_st_val)
-    if verbose:
-        print(f"ST val set to: {new_st_val}")
-
-def autoFindTransition(p1_list, out_vals, sigma=2, plot=False, verbose=True):
-    """ try to find and return the P1 value of the transition.
-    a transition is the maximum of the derivative.
-    out_vals is a trace in P1 with values in p1_list
-    """
-    gaussian_out = ndimage.gaussian_filter1d(out_vals, sigma=sigma)
-    deriv_out = np.gradient(gaussian_out)
-    transition_index = np.argmax(np.absolute(deriv_out))
-    transition_p1 = p1_list[transition_index]
-    if plot:
-        plt.plot(p1_list, out_vals)
-        plt.plot(p1_list, gaussian_out)
-        plt.plot(p1_list, deriv_out)
-        plt.axvline(transition_p1)
-    if verbose:
-        print('transition found at: '+str(transition_p1))
-    return transition_p1
-
-def autoFindThreshold(ats, awg, gain, plot=False, verbose=True):
-    """ assuming P1 is set exactly on the transition:
-    sends a load/empty pulse and find the digit treshold
-    """
-    load = Segment(duration=0.0005, waveform=Ramp(val_start=0.00, val_end=0.000), offset=0.002, mark=(0.0, 1.0))
-    empty = Segment(duration=0.0005, waveform=Ramp(val_start=0.000, val_end=0.000), offset=-0.002)
-    pulse = Pulse(load, empty)
-    ats.acquisition_length_sec.set(pulse.duration)
-    ats.nbwindows.set(50)
-    sendSeqToAWG(awg, pulse, gain, channel=1, run_after=plot)
-    img, timelist = acquire(ats, show_plot=True)
-    awg.run(False)
-    threshold = estimateDigitThreshold(img, show_plot=plot, verbose=verbose)
-    return threshold
+    if show_plot:
+        plt.figure()
+        plt.plot(st_points, ST_1)
+        plt.plot(st_points, ST_2)
+        plt.plot(st_points, delta_ST)
+        plt.axvline(x=ST_max, color='r', linestyle=':', label='ST optimal: '+str(ST_max))
+        plt.legend()
+    return ST_max
 
 def _exp(x, tau, a=1., b=0., c=0.):
     return a*np.exp(-(x+b)/tau)+c
@@ -198,7 +208,11 @@ def autoFindTunnelRate(ats, awg, gain, threshold, opposite_offset=False, plot=Fa
 #### SIGNAL FILTERING ####
 
 def gaussianLineByLine(image, sigma=20, **kwargs): 
-    return np.array([ndimage.gaussian_filter1d(line, sigma, **kwargs) for line in image])
+    try:
+        dim2 = len(image[0])
+        return np.array([ndimage.gaussian_filter1d(line, sigma, **kwargs) for line in image])
+    except:
+        return ndimage.gaussian_filter1d(image, sigma, **kwargs)
 
 def _doubleGaussian(x, sigma1, sigma2, mu1=0., mu2=0., A1=3.5, A2=3.5):
     """ use for fitting state repartition
@@ -358,17 +372,99 @@ def classifyTraces(data_digit, time, return_stats=True):
     
     return {'avg_spin_up': avg_blip_trace, 'avg_spin_down': avg_no_blip_trace, 'nb_exclude':len(exclude_traces)}
 
+
+#### Fast sweep ####
     
+def fastSweepPulseInit(x_step_time, y_range, awg=None, gain=None):   
+    """ awg gets y wave on channel 1, x wave on channel 2.
+    triggers are on both channels.
+    y wave is a ramp of magnitude +-(y_range/2)
+    x wave is the rf part of the staircase
+    
+    The bilt command is set to the start value, and the awg is started
+    """
+
+    trig_pulse = Pulse(Segment(duration=x_step_time, offset=0, mark=(0,0.5)))
+    ramp_pulse = Pulse(Segment(duration=x_step_time/2, waveform=Ramp(0, +y_range/2,)),
+                       Segment(duration=x_step_time/2, waveform=Ramp(-y_range/2, 0), mark=(0,0.5)))
+    sendSeqToAWG(awg, ramp_pulse, gain, channel=1, run_after=False)
+    sendSeqToAWG(awg, ramp_pulse, gain, channel=2, run_after=False)
+
+    awg.run(True)
+
+def stairTo(val, bi=None, nb_step=100):
+    """ assuming the bilt is in STEP mode
+    step the bi.current_channel to val and
+    set the amplitude so that it will take nb_step to reach val
+    """
+    #nb_trig = abs(bi.level.get()-val)/bi.step_amplitude.get()
+    step_amplitude = abs(bi.level.getcache()-val) / nb_step
+    if step_amplitude != 0:
+        bi.step_amplitude.set(step_amplitude)
+    print(f"step amp set to: {step_amplitude}. Reaching {val} will take {nb_step} steps.")
+    bi.level.set(val, trig=False)
+
+
+
+def fastSweepStart(x_stop, x_step_time, y_range, x_nbpts=100, bi=None, ats=None, awg=None, run_fn=None, plot=False):
+    """ 
+    sweep from bilt current value to x_stop with x_nbpts points.
+    
+    It's made that way since ats.nbwindows must be a squared for some reason, so we adjust step_amplitude so the sweep is always nb_trig long.
+    
+    # TODO: the awg cannot be run after the command `getATSImage` so it must be start manually for now until a solution is found.
+    """
+    current_val = bi.level.get()
+    step_amplitude = abs(current_val - x_stop)/x_nbpts
+    if step_amplitude == 0:
+        print('Already at val')
+        return
+    print(f"amplitude for {x_nbpts} points: ", step_amplitude)
+    bi.step_amplitude.set(step_amplitude)
+    ats.nbwindows.set(x_nbpts)
+
+    ats.acquisition_length_sec.set(x_step_time*0.98)
+    
+    awg.run(False)
+    bi.level.set(x_stop, trig=False)
+    
+    def startAWGAfter(awg, wtime=.1):
+        commands.wait(wtime)
+        awg.run(True)
+    awgThreadRun = threading.Thread(target=startAWGAfter, args=(awg,))
+    awgThreadRun.start()
+
+    t0 = timemodule.time()
+    out, time = getATSImage(ats, with_time=True)
+    print(timemodule.time() - t0)
+    out=out.T
+    stair_axis = np.linspace(current_val, x_stop, x_nbpts)
+    
+    if plot:
+        y_axis = np.linspace(-y_range/2, y_range/2, len(out[0])) if y_range!=0 else [None]
+        imshow(out, x_axis=stair_axis, y_axis=y_axis, x_label=f"P2 (step: {x_step_time}s/{round(step_amplitude,6)}V)", y_label='delta P1')
+    
+    return out, stair_axis
+
+def threadWaitThenRun(my_function, wait_time=.1):
+    """ return: a thread object. Call the method .start() on it to start the wait_time. At the end of wait_time, my_function is run."""
+    def threadFn(wtime=.1):
+        commands.wait(wtime)
+        fn()
+    thread = threading.Thread(target=my_function)
+    return thread
 
 #### FILE SAVING/LOADING ####
-
-def saveNpz(path, filename, array, x_axis=None, y_axis=None, metadata={}):
+def saveNpz(*arg, **kwargs):
+    saveToNpz(*arg, **kwargs)
+    
+def saveToNpz(path, filename, array, x_axis=None, y_axis=None, metadata={}):
     """ Save array to an npz file.
     metadata is a dictionnary, it can have pyHegel instruments as values: the iprint will be saved.
     """
     if not path.endswith(('/', '\\')):
         path += '/'
-    timestamp = time.strftime('%Y%m%d-%H%M%S-')
+    timestamp = timemodule.strftime('%Y%m%d-%H%M%S-')
     fullname = path + timestamp + filename
     
     # formating metadata
@@ -405,39 +501,58 @@ def loadNpz(name):
             ret[key] = obj
     return ret
 
-def imshowNpz(npzdict, **kwargs):
-    """ npz dict of the form:
-        {'array': array(),
-         'x_axis': array() or None,
-         'y_axis': array() or None,
-         'metadata': {}}
-    """
+def imshowFromNpz(filename, return_dict=False, **kwargs):
+    npzdict = loadNpz(filename)
     array = npzdict.get('array')
     x_axis = npzdict.get('x_axis', [None])
     y_axis = npzdict.get('y_axis', [None])
     imshow(array, x_axis=x_axis, y_axis=y_axis, **kwargs)
+    if return_dict: return npzdict
     
 def imshow(*args, **kwargs):
+    """ my custom imshow function.
+    with easier axis extent: x_axis=, y_axis=.
+    and side by side mode with args= im1, im2
+    """
     kwargs['interpolation'] = 'none'
     kwargs['aspect'] = 'auto'
     kwargs['origin'] = 'lower'
+    
+    # axes
     x_axis = kwargs.pop('x_axis', [None])
+    if x_axis is None: x_axis = [None]
     y_axis = kwargs.pop('y_axis', [None])
+    if y_axis is None: y_axis = [None]
     if None not in x_axis and None in y_axis:
         y_axis = [0, len(args[0])]
     extent = (x_axis[0], x_axis[-1], y_axis[0], y_axis[-1])
     if None not in extent:  
         kwargs['extent'] = extent
-    fig = plt.figure()
-    im = plt.imshow(*args, **kwargs)
-    fig.colorbar(im)
-    fig.show()
+    x_label = kwargs.pop('x_label', None)
+    y_label = kwargs.pop('y_label', None)
+    
+    # multi-image
+    if len(args) == 2:
+        f, axarr = plt.subplots(1,2) 
+        axarr[0].imshow(args[0], **kwargs)
+        axarr[1].imshow(args[1], **kwargs)
+    
+    else:
+        fig = plt.figure()
+        im = plt.imshow(*args, **kwargs)
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+        fig.colorbar(im)
+        fig.show()
 
-def qplot(x, y, xlabel='', ylabel='', title='', same_fig=False):
+def qplot(x, y=None, xlabel='', ylabel='', title='', same_fig=False):
     """ quick plot """
     if not same_fig:
         plt.figure()
-    plt.plot(x, y)
+    if y is None:
+        plt.plot(x)
+    else:
+        plt.plot(x, y)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)

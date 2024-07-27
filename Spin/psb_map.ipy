@@ -1,0 +1,235 @@
+# %%
+%load_ext autoreload
+%autoreload 2
+%gui qt
+
+from pyHegel.commands import *
+_init_pyHegel_globals()
+
+import numpy as np
+from scipy.ndimage import gaussian_filter1d
+
+LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
+LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
+
+
+%cd $LAB_SCRIPT_PATH/Spin/
+LOG_PATH = LAB_SCRIPT_PATH + "/Spin/logs"
+from MyUtils import *
+from Pulses.Builder import *
+from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
+
+# %% setup
+
+awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
+gain = awg.gain = 1/(0.02512)*0.4
+awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger') 
+awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger') 
+awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
+awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
+awg.write('SOURce2:DAC:RESolution 15') 
+awg.write('SOURce3:DAC:RESolution 15') 
+# debug: awg.clear()
+
+ats = instruments.ATSBoard(systemId=1, cardId=1)
+ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
+ats.active_channels.set(['A','B'])
+ats.sample_rate.set(100000)
+ats.trigger_level_1.set(1000)
+ats.ConfigureBoard()
+ats.nbwindows.set(1)
+ats.trigger_delay.set(0)
+
+rhP1 = bi3 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
+rhP2 = bi1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
+
+# %% set a dev_y, then acq while ramping dev_x
+awg_sr = 10e4
+dev_x = rhP1
+dev_y = rhP2
+awg_ch_x = 1 # 1:P1, 2:P2
+
+value_x, delta_x, time_x = 0.92, 0.020, 0.004
+value_y, delta_y, nb_y = 1.056, 0.010, 101
+
+sync_time_after_ramp = 0.06
+
+# ramp
+y_list = np.linspace(value_y-delta_y, value_y+delta_y, nb_y)
+x_ramp = Pulse(Segment(duration=time_x), 
+                Segment(duration=time_x, waveform=Ramp(-delta_x, +delta_x), mark=(0, 1)),
+                Segment(duration=sync_time_after_ramp))
+y_zero = x_ramp.genMarksOnly()
+
+# setting
+sendSeqToAWG(awg, y_zero, gain, channel={1:2, 2:1}[awg_ch_x], run_after=False, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+sendSeqToAWG(awg, x_ramp, gain, channel=awg_ch_x, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+sendSeqToAWG(awg, x_ramp, gain, channel=3, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+ats.acquisition_length_sec.set(time_x)
+ats.nbwindows.set(1)
+dev_y.set(value_y)
+dev_x.set(value_x)
+
+
+# %% single shot map
+
+def get():
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(time_x*1.2)
+    return ats.fetch.get()[1:4]
+
+# measure
+map_, time_, pulse_  = [], [], []
+
+for i, y_val in enumerate(y_list):
+    print(f"{i+1}/{len(y_list)}: {y_val}")
+    dev_y.set(y_val)
+    wait(0.002)
+    timelist, chA, chB  = get()
+    map_.append(chA) 
+    pulse_.append(chB)
+    time_.append(timelist)
+
+imshow(map_, x_label=f"t (s)\n{dev_x.find_global_name()} +-{delta_x}V", 
+       y_label=f"{dev_y.find_global_name()}", x_axis=time_[0],
+       y_axis=y_list if y_list[0] != y_list[1] else [None])
+#imshow(pulse_, x_axis=time_[0])
+
+# %% saving
+filename = saveToNpz(LOG_PATH, 'psb', map_, x_axis=time_[0], y_axis=y_list if y_list[0] != y_list[1] else [None])
+imshowFromNpz(filename)
+
+
+# %% "video" mode
+
+y_sweep = SweepAxis(y_list, fn_next=dev_y.ramp.set)
+
+
+def x_shift(val): dev_x.set(dev_x.get()+val)
+    
+def vmget():
+    y_sweep.next()
+    
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(time_x)
+    data = ats.fetch.get()[2]
+    # filter
+    data = gaussianLineByLine(data, 2)
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=len(y_list),
+                     xlabel=f"{dev_x.find_global_name()} ramp", ylabel=f"{dev_y.find_global_name()}", 
+                     axes_dict={'x':[value_x-delta_x, value_x+delta_x], 'y':[min(y_list), max(y_list)]},
+                     fn_xshift=x_shift, fn_yshift=y_sweep.shift)
+
+
+
+# %% TEST alternate steps et ramp sur awg
+
+delta_y, nb_y = 0.020, 12
+delta_x, time_x = 0.020, 0.004
+awg_ch_x = 1
+
+rhP1.set(0.92)
+rhP2.set(1.054)
+
+sync_time = 0.04
+
+# ramp
+y_steps = Pulse()
+x_ramps = Pulse()
+for i, y_val in enumerate(np.linspace(delta_y, 0, nb_y)):
+    sign = {0:-1, 1:1}[i%2]
+    y_steps.addStep(duration = sync_time/2, amplitude = sign*y_val)
+    y_steps.addStep(duration = time_x, amplitude = sign*y_val, mark=(0,0.5))
+    y_steps.addStep(duration = sync_time/2, amplitude = sign*y_val)
+    
+    x_ramps.addStep(sync_time/2, 0)
+    x_ramps.addRamp(time_x, -delta_x, +delta_x, mark=(0,0.5))
+    x_ramps.addStep(sync_time/2, 0)
+
+sendSeqToAWG(awg, y_steps, gain, channel={1:2, 2:1}[awg_ch_x], plot=False, run_after=False, awg_sr=10e4)
+sendSeqToAWG(awg, x_ramps, gain, channel=awg_ch_x, plot=False, run_after=True, awg_sr=10e4)
+sendSeqToAWG(awg, x_ramps, gain, channel=3, plot=False, run_after=True, awg_sr=10e4)
+
+ats.acquisition_length_sec.set(time_x)
+ats.nbwindows.set(nb_y)
+
+
+def get():
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(y_steps.duration*1.1)
+    return ats.fetch_all.get()
+
+
+
+# %% pulse psb:
+
+#P1, P2 set on read point
+
+pulse_dev_x = Pulse(name='pulse x', inverse_mark=True)
+pulse_dev_y = Pulse(name='pulse y', inverse_mark=True)
+
+# wait before
+wait_time = 0.015
+pulse_dev_x.addStep(wait_time, 0, mark=(0,1))
+pulse_dev_y.addStep(wait_time, 0, mark=(0,1))
+
+# init
+init_time = 0.005
+pulse_dev_x.addStep(duration=init_time, amplitude=-0.015)
+pulse_dev_y.addStep(duration=init_time, amplitude=-0.015)
+
+# load
+load_time = 0.005
+pulse_dev_x.addStep(load_time, 0)
+pulse_dev_y.addStep(load_time, -0.015)
+
+# read
+read_time = 0.01
+pulse_dev_x.addStep(read_time, 0)
+pulse_dev_y.addStep(read_time, 0)
+
+#plotXpulses(pulse_dev_x, pulse_dev_y)
+
+ch_P1, ch_P2 = 1, 2
+sendSeqToAWG(awg, pulse_dev_x, gain, channel=ch_P1, run_after=False, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+sendSeqToAWG(awg, pulse_dev_y, gain, channel=ch_P2, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+sendSeqToAWG(awg, pulse_dev_x, gain, channel=3, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+
+acq_time = pulse_dev_x.duration - pulse_dev_x[0].duration
+#acq_time = 0.02
+
+ats.acquisition_length_sec.set(acq_time)
+ats.nbwindows.set(1)
+
+# %% two step:
+    
+
+# %% measure psb:
+    
+#P1, P2 set on read point:
+rhP1.set(0.92)
+rhP2.set(1.054)    
+
+#ax_sweep = SweepAxis(np.linspace(0.91, 0.93, 101), fn_next=rhP1.ramp.set, label='rhP1', disable=0)
+ax_sweep = SweepAxis(np.linspace(1.050, 1.060, 101), fn_next=rhP2.ramp.set, label='rhP2', disable=0)
+
+def vmget():
+    ax_sweep.next()
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(acq_time*1)
+    data = ats.fetch.get()[2]
+    # filter
+    data = gaussianLineByLine(data, 2)
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=len(ax_sweep),
+                     xlabel=f"pulse", ylabel=ax_sweep.label, 
+                     axes_dict={'x':[0, acq_time], 'y':ax_sweep.axis},
+                     fn_yshift=ax_sweep.shift)
+
