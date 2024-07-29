@@ -373,78 +373,7 @@ def classifyTraces(data_digit, time, return_stats=True):
     return {'avg_spin_up': avg_blip_trace, 'avg_spin_down': avg_no_blip_trace, 'nb_exclude':len(exclude_traces)}
 
 
-#### Fast sweep ####
-    
-def fastSweepPulseInit(x_step_time, y_range, awg=None, gain=None):   
-    """ awg gets y wave on channel 1, x wave on channel 2.
-    triggers are on both channels.
-    y wave is a ramp of magnitude +-(y_range/2)
-    x wave is the rf part of the staircase
-    
-    The bilt command is set to the start value, and the awg is started
-    """
-
-    trig_pulse = Pulse(Segment(duration=x_step_time, offset=0, mark=(0,0.5)))
-    ramp_pulse = Pulse(Segment(duration=x_step_time/2, waveform=Ramp(0, +y_range/2,)),
-                       Segment(duration=x_step_time/2, waveform=Ramp(-y_range/2, 0), mark=(0,0.5)))
-    sendSeqToAWG(awg, ramp_pulse, gain, channel=1, run_after=False)
-    sendSeqToAWG(awg, ramp_pulse, gain, channel=2, run_after=False)
-
-    awg.run(True)
-
-def stairTo(val, bi=None, nb_step=100):
-    """ assuming the bilt is in STEP mode
-    step the bi.current_channel to val and
-    set the amplitude so that it will take nb_step to reach val
-    """
-    #nb_trig = abs(bi.level.get()-val)/bi.step_amplitude.get()
-    step_amplitude = abs(bi.level.getcache()-val) / nb_step
-    if step_amplitude != 0:
-        bi.step_amplitude.set(step_amplitude)
-    print(f"step amp set to: {step_amplitude}. Reaching {val} will take {nb_step} steps.")
-    bi.level.set(val, trig=False)
-
-
-
-def fastSweepStart(x_stop, x_step_time, y_range, x_nbpts=100, bi=None, ats=None, awg=None, run_fn=None, plot=False):
-    """ 
-    sweep from bilt current value to x_stop with x_nbpts points.
-    
-    It's made that way since ats.nbwindows must be a squared for some reason, so we adjust step_amplitude so the sweep is always nb_trig long.
-    
-    # TODO: the awg cannot be run after the command `getATSImage` so it must be start manually for now until a solution is found.
-    """
-    current_val = bi.level.get()
-    step_amplitude = abs(current_val - x_stop)/x_nbpts
-    if step_amplitude == 0:
-        print('Already at val')
-        return
-    print(f"amplitude for {x_nbpts} points: ", step_amplitude)
-    bi.step_amplitude.set(step_amplitude)
-    ats.nbwindows.set(x_nbpts)
-
-    ats.acquisition_length_sec.set(x_step_time*0.98)
-    
-    awg.run(False)
-    bi.level.set(x_stop, trig=False)
-    
-    def startAWGAfter(awg, wtime=.1):
-        commands.wait(wtime)
-        awg.run(True)
-    awgThreadRun = threading.Thread(target=startAWGAfter, args=(awg,))
-    awgThreadRun.start()
-
-    t0 = timemodule.time()
-    out, time = getATSImage(ats, with_time=True)
-    print(timemodule.time() - t0)
-    out=out.T
-    stair_axis = np.linspace(current_val, x_stop, x_nbpts)
-    
-    if plot:
-        y_axis = np.linspace(-y_range/2, y_range/2, len(out[0])) if y_range!=0 else [None]
-        imshow(out, x_axis=stair_axis, y_axis=y_axis, x_label=f"P2 (step: {x_step_time}s/{round(step_amplitude,6)}V)", y_label='delta P1')
-    
-    return out, stair_axis
+### USEFUL THINGS ###
 
 def threadWaitThenRun(my_function, wait_time=.1):
     """ return: a thread object. Call the method .start() on it to start the wait_time. At the end of wait_time, my_function is run."""
@@ -454,7 +383,17 @@ def threadWaitThenRun(my_function, wait_time=.1):
     thread = threading.Thread(target=my_function)
     return thread
 
+
 #### FILE SAVING/LOADING ####
+
+def readfileNdim(file):
+    """ a wrapper of pyHegel.readfile for sweep with N dimensions 
+    
+    imshow(data[3][1].T, x_axis=data[2,1,0], y_axis=data[1,1][::,1], x_label='P2', y_label='P1')
+    """
+    data, titles, headers = readfile(file, getheaders=True, multi_sweep='force', multi_force_def=np.nan)
+    return data, titles, headers
+
 def saveNpz(*arg, **kwargs):
     saveToNpz(*arg, **kwargs)
     
