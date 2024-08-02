@@ -128,7 +128,7 @@ def acquire(ats, digitize=False, threshold=0., sigma=1, return_average_trace=Fal
 #### DOT ####
 
 def manualSweep(dev_sw, points, out_function, plot=False):
-    """ does a manual sweep. Sets a point, call out_function(), append result in a list. Returns the list. """
+    """ does a manual sweep. Sets a point, call out_function(), append result in a list, returns the list. """
     out = []
     for point in points:
         dev_sw.set(point)
@@ -137,44 +137,12 @@ def manualSweep(dev_sw, points, out_function, plot=False):
         plt.plot(points, out)
     return np.array(out)
 
-def autoFindBestST(ST, st_points, P1, p1_trans_val, zi_lambda, offset=0.005, show_plot=True):
-    """ Does a sweep of ST for P1=p1_trans_val+offset and -offset.
-    The ST sweep values are: ST.get()-offset ->ST.get()+offset
-    Then returns the optimal value for ST
-    # %% Find best ST example
-    st_points = np.linspace(3.07, 3.09, 101)
-    p1_trans_val = 0.826
-    st_val = autoFindBestST(ST, st_points, P1, p1_trans_val, zi_get, offset=0.005, show_plot=True)
-
-    """
-    # my things
-    # 1 sweep P1 pour trouver la transition
-    p1_1, p1_2 = p1_trans_val + offset, p1_trans_val - offset
-    P1.set(p1_1)
-    print(f"sweeping ST for P1={p1_1}")
-    ST_1 = manualSweep(ST, st_points, zi_lambda)
-    P1.set(p1_2)
-    print(f"sweeping ST for P1={p1_2}")
-    ST_2 = manualSweep(ST, st_points, zi_lambda)
-    delta_ST = np.abs(ST_1 - ST_2)
-    delta_max = np.argmax(delta_ST)
-    ST_max = st_points[delta_max]
-    print(f"Found the optimal ST to be: {ST_max}")
-    
-    if show_plot:
-        plt.figure()
-        plt.plot(st_points, ST_1)
-        plt.plot(st_points, ST_2)
-        plt.plot(st_points, delta_ST)
-        plt.axvline(x=ST_max, color='r', linestyle=':', label='ST optimal: '+str(ST_max))
-        plt.legend()
-    return ST_max
-
 def _exp(x, tau, a=1., b=0., c=0.):
     return a*np.exp(-(x+b)/tau)+c
 
 def autoFindTunnelRate(ats, awg, gain, threshold, opposite_offset=False, plot=False, verbose=True, fit_skip_firsts_point=0):
-    """ assuming P1 is set exactly on the transition:
+    """ TESTING
+    assuming P1 is set exactly on the transition:
     sends a load/empty pulse, digitalize and average the result, fit an exponential on the unload time.
     opposite_offset: tells the pulse to be up/down or down/up
     """
@@ -251,7 +219,7 @@ def estimateDigitThreshold(image, p0=[7, 10, 25, 62, 3.5, 3.5], bins=100, show_p
         print('Threshold found at x='+str(threshold_val))
     return threshold_val
 
-def digitizeArray(image, threshold):
+def classifiyArray(image, threshold):
     """ return the image with values 0 for below TH and 1 for above TH
     """
     bool_image = image>threshold
@@ -372,6 +340,18 @@ def classifyTraces(data_digit, time, return_stats=True):
     
     return {'avg_spin_up': avg_blip_trace, 'avg_spin_down': avg_no_blip_trace, 'nb_exclude':len(exclude_traces)}
 
+def histogramOnEachColumns(arr, bins=100, get_bins=False):
+    im = []
+    _, bin_list = np.histogram(arr.flatten(), bins=100)
+    
+    for i in range(arr.shape[1]):
+        col = arr[::,i]
+        hist, _ = np.histogram(col, bins=bin_list, density=True)
+        im.append(hist)
+    if get_bins:
+        return np.array(im).T, bin_list
+    return np.array(im).T
+        
 
 ### USEFUL THINGS ###
 
@@ -386,18 +366,114 @@ def threadWaitThenRun(my_function, wait_time=.1):
 
 #### FILE SAVING/LOADING ####
 
-def readfileNdim(file):
-    """ a wrapper of pyHegel.readfile for sweep with N dimensions 
+def read2fileAndPlotDiff(file1, file2, filtre=lambda arr: arr):
+    """ for 1 dimensional sweep, assuming the swept values are the same. """
+    rf1 = commands.readfile(file1)
+    rf2 = commands.readfile(file2)
+    sw1, data1 = rf1[0], rf1[1]
+    sw2, data2 = rf2[0], rf2[1]
     
-    imshow(data[3][1].T, x_axis=data[2,1,0], y_axis=data[1,1][::,1], x_label='P2', y_label='P1')
+    data1, data2 = filtre(data1), filtre(data2)
+    
+    delta = np.abs(data1 - data2)
+    delta_max = np.argmax(delta)
+    value_max = sw1[delta_max]
+    print(f"Max delta at: {value_max}")
+
+    fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True)
+    ax1.plot(sw1, data1, label=f"file1")
+    ax1.plot(sw1, data2, label=f"file2")
+    ax2.plot(sw1, delta)
+    ax1.axvline(x=value_max, color='r', linestyle=':', label='Delta max at '+str(value_max))
+    ax2.axvline(x=value_max, color='r', linestyle=':', label='Delta max at '+str(value_max))
+    ax1.legend()
+    return value_max
+
+def readfileNdim(file):
+    """ a memo of pyHegel.readfile for sweep with N dimensions 
+    for i in range(10):
+        imshow(data[3][i].T, x_axis=data[2,1,0], y_axis=data[1,1][::,1], x_label='P2', y_label='P1', title=f"B1={round(data[0][i][0][0], 3)}")
     """
-    data, titles, headers = readfile(file, getheaders=True, multi_sweep='force', multi_force_def=np.nan)
+    data, titles, headers = commands.readfile(file, getheaders=True, multi_sweep='force', multi_force_def=np.nan)
     return data, titles, headers
 
-def saveNpz(*arg, **kwargs):
-    saveToNpz(*arg, **kwargs)
-    
-def saveToNpz(path, filename, array, x_axis=None, y_axis=None, metadata={}):
+def showfile2dim(data, x_label='', y_label='', title='', is_alternate=False, transpose=False):
+    """
+    data is the result of readfileNdim[0]
+    titles is the result of readfileNdim[1]
+    transpose: False | True (data and axes)
+    """
+    if is_alternate:
+        img = alternate(data[3]).T
+    else:
+        img = data[3].T
+        
+    if transpose != False:
+        x_label, y_label = y_label, x_label
+        img = img.T
+        
+    imshow(img, 
+           x_axis=data[0][::,1], y_axis=data[1,0], 
+           x_label=x_label, y_label=y_label, 
+           title=title, cbar=False)
+
+def getFirstAxisList(data3d):
+    return [(i, round(image_i[0][0], 4)) for i, image_i in enumerate(data3d[0])]
+
+def showfile3dim(data, first_axis_label='', x_label='', y_label='', cbar=False, 
+                 is_alternate=False, transpose=False, deinterlace=False,
+                 first_axis_ids=[]):
+    """ take the output of a readfile data for a 3d sweep, plot an image for each first axis values
+    handles 'alternate' sweep.
+    first_axis_ids is a list of ids instead of plotting for each first axis values.
+    deinterlace: plot two figure per 2d sweep,
+    """
+    first_axis_list = getFirstAxisList(data)
+        
+    iterator = range(len(data[0])) if len(first_axis_ids) == 0 else first_axis_ids
+    for i in iterator:
+        
+        
+        if is_alternate:
+            y_axis = flip(data[1,1][::,1])
+            img = alternate(data[3][i])
+            if i%2==1:
+                img = flip(img.T, axis=-1).T
+        else:
+            y_axis = data[1,1][::,1]
+            img = data[3][i]
+        
+        imshow_kw = dict(x_axis=data[2,1,0] if transpose else y_axis,
+                         y_axis=y_axis if transpose else data[2,1,0], 
+                         x_label=x_label if not transpose else y_label, 
+                         y_label=y_label if not transpose else x_label,
+                         cbar=cbar)
+
+        if deinterlace:
+            img1 = img[0::2, :]
+            img2 = img[1::2, :]
+            imshow(img1 if transpose else img1.T, title=f"{first_axis_label}={first_axis_list[i][1]}, paires", **imshow_kw)
+            imshow(img2 if transpose else img2.T, title=f"{first_axis_label}={first_axis_list[i][1]}, impaires", **imshow_kw)
+            continue
+            
+        imshow(img if transpose else img.T, title=f"{first_axis_label}={first_axis_list[i][1]}, B2=0.5", **imshow_kw )
+
+def alternate(arr, enable=True):
+    """ returns a copied array with odd rows flipped """
+    if not enable: return arr
+    ret = arr.copy()
+    ret[1::2, :] = ret[1::2, ::-1]
+    return ret
+
+def flip(arr, axis=-1, enable=True):
+    """ returns a copied flipped array allong axis """
+    if not enable: return arr
+    ret = arr.copy()
+    ret = np.flip(ret, axis=axis)
+    return ret
+
+
+def saveToNpz(path, filename, array, metadata={}):
     """ Save array to an npz file.
     metadata is a dictionnary, it can have pyHegel instruments as values: the iprint will be saved.
     """
@@ -413,7 +489,7 @@ def saveToNpz(path, filename, array, x_axis=None, y_axis=None, metadata={}):
     metadata['_filename'] = timestamp+filename
     
     # saving zip
-    np.savez(fullname, array=array, x_axis=x_axis, y_axis=y_axis, metadata=metadata)
+    np.savez(fullname, array=array, metadata=metadata)
     
     print('Saved file to: ' + fullname)
     return fullname+'.npz'
@@ -423,8 +499,6 @@ def loadNpz(name):
     """ Returns a dictionnary build from the npzfile.
     if saveNpz was used, the return should be:
         {'array': array(),
-         'x_axis': array() or None,
-         'y_axis': array() or None,
          'metadata': {}}
     """
     if not name.endswith('.npz'):
@@ -441,51 +515,69 @@ def loadNpz(name):
     return ret
 
 def imshowFromNpz(filename, return_dict=False, **kwargs):
+    """ if the Npz was saved with imshow(*args, **kwargs, save=True),
+    it will load the file and call imshow(array, **kwargs)
+    """
     npzdict = loadNpz(filename)
     array = npzdict.get('array')
-    x_axis = npzdict.get('x_axis', [None])
-    y_axis = npzdict.get('y_axis', [None])
-    imshow(array, x_axis=x_axis, y_axis=y_axis, **kwargs)
-    if return_dict: return npzdict
+    imshow(array, **npzdict.get('metadata', {}).get('imshow_kwargs', {}))
+    if return_dict:
+        return npzdict
     
-def imshow(*args, **kwargs):
+def imshow(array, **kwargs):
     """ my custom imshow function.
     with easier axis extent: x_axis=, y_axis=.
-    and side by side mode with args= im1, im2
+    and saving to npz with all kwargs
     """
+    
     kwargs['interpolation'] = 'none'
     kwargs['aspect'] = 'auto'
     kwargs['origin'] = 'lower'
     
+    # save array and kwargs
+    path = kwargs.pop('path', './')
+    filename = kwargs.pop('filename', '')
+    metadata = kwargs.pop('metadata', {})
+    metadata['imshow_kwargs'] = kwargs
+    if kwargs.pop('save', False):
+        saveToNpz(path, filename, array, metadata=metadata)
+        
+        
     # axes
     x_axis = kwargs.pop('x_axis', [None])
-    if x_axis is None: x_axis = [None]
+    if isinstance(x_axis, (int, float)):
+        x_axis = [0, x_axis] if x_axis > 0 else [x_axis, 0]
+    
     y_axis = kwargs.pop('y_axis', [None])
-    if y_axis is None: y_axis = [None]
+    if isinstance(y_axis, (int, float)):
+        y_axis = [0, y_axis] if y_axis > 0 else [y_axis, 0]
+        
     if None not in x_axis and None in y_axis:
-        y_axis = [0, len(args[0])]
+        y_axis = [0, len(array)]
+        
     extent = (x_axis[0], x_axis[-1], y_axis[0], y_axis[-1])
+    
     if None not in extent:  
         kwargs['extent'] = extent
     x_label = kwargs.pop('x_label', None)
     y_label = kwargs.pop('y_label', None)
     
-    # multi-image
-    if len(args) == 2:
-        f, axarr = plt.subplots(1,2) 
-        axarr[0].imshow(args[0], **kwargs)
-        axarr[1].imshow(args[1], **kwargs)
+    title = kwargs.pop('title', '')
     
-    else:
-        fig = plt.figure()
-        im = plt.imshow(*args, **kwargs)
-        plt.xlabel(x_label)
-        plt.ylabel(y_label)
+    # colorbar
+    cbar = kwargs.pop('cbar', True)
+    
+    fig = plt.figure()
+    im = plt.imshow(array, **kwargs)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    if cbar:
         fig.colorbar(im)
-        fig.show()
+    fig.show()
 
 def qplot(x, y=None, xlabel='', ylabel='', title='', same_fig=False):
-    """ quick plot """
+    """ quick 1d plot """
     if not same_fig:
         plt.figure()
     if y is None:

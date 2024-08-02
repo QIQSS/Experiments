@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import QMainWindow, QPushButton, \
 
 from pyHegel.gui import ScientificSpinBox
 import pyqtgraph as pg
+import pyqtgraph.exporters
 
 import time
 import traceback
@@ -20,7 +21,9 @@ class VideoModeWindow(QMainWindow):
                  fn_yshift=None,
                  xlabel=None,
                  ylabel=None,
-                 wrap_at=0, wrap_direction='h'):
+                 wrap_at=0, wrap_direction='h', pause_after_one=False,
+                 ysweep=None, xsweep=None,
+                 window_size=False):
         """
         Opens a window and start a thread that exec and show `fn_get`.
 
@@ -37,13 +40,18 @@ class VideoModeWindow(QMainWindow):
         axes_dict: dict
             of the form {'x': [start, stop]} for 1d
             {'x': [start, stop], 'y':[start, stop] for 2d
+             OR
+            of the form {'x': stop} and it will be interpreted as [0, stop]
         fn_xshift: function
             called when pressing x shift buttons, with arg step
         wrap_at: int
             when dim=1, you can choose to still display an image. 'wrap_at' is the second dimension of this image.
             the shape of get_fn() must be constant.
         wrap_direction: 'v' | 'h'
-
+        pause_after_one: bool, pause after a map has been completed. (== after an image is in the buffer)
+        ysweep: give a SweepAxis object and it will set the right ylabel, yaxis, fn_yshift and wrap_at (overridding kw args).
+        xsweep: same as ysweep but wrap_direction is set to 'v'. Can only use one or the other.
+        window_size: False:default | 'wide' | 'wider'
         Returns
         -------
         None.
@@ -52,15 +60,34 @@ class VideoModeWindow(QMainWindow):
         super().__init__()
         self.frame_count = 0
         self._wrap_mode = False
-                
+        self.pause_after_one = pause_after_one
+                        
+        # sweep object
+        if ysweep:
+            wrap_at = len(ysweep)
+            ylabel = ysweep.label
+            fn_yshift = ysweep.shift
+            axes_dict['y'] = ysweep.axis
+        elif xsweep:
+            wrap_at = len(xsweep)
+            xlabel = xsweep.label
+            fn_xshift = xsweep.shift
+            axes_dict['x'] = xsweep.axis 
+            wrap_direction = 'v'
+        
         # VM
         # init a dummy vm
         self.navg = 1
         self.data_buffer = []
         self.avg_data = None # store the current total avg image
-        self.x, self.y = axes_dict.get('x', [0, 1]), axes_dict.get('y', [0, 1])
+        self.x = axes_dict.get('x', [0, 1])
+        if isinstance(self.x, (int, float)): self.x = [0, self.x]
+        self.y = axes_dict.get('y', [0, 1] if wrap_at == 0 else [0, wrap_at])
+        if isinstance(self.y, (int, float)): self.y = [0, self.y]
+        
         self.fn_xshift = fn_xshift
         self.fn_yshift = fn_yshift
+
         
         # for wrapping mode
         if dim==1 and wrap_at > 0:
@@ -148,6 +175,12 @@ class VideoModeWindow(QMainWindow):
         if show: self.show()
         if play: self.play()
         
+        
+        if window_size == 'wide':
+            self.resize(1000, 500)
+        elif window_size == 'wider':
+            self.resize(1000, 200)
+        
     def closeEvent(self, event):
         self.stop()
         print("closed")
@@ -157,16 +190,21 @@ class VideoModeWindow(QMainWindow):
     def _doAvg(self, data, store_in_buffer=True):
         # this is called by plot and imgplot.
         # so we average but also do some general stuff
-        
-        # fps
-        self.frame_count += 1
-        if self.frame_count == 1: # first frame
-            self.t0 = time.time()
-        else:
-            self.lblFps.setText(str(round(self.frame_count / (time.time()-self.t0), 1))+' fps')
-        
+
         # buffer
         if store_in_buffer:
+            # we get here after each completed frame.
+            if self.pause_after_one:
+                self.pause()
+                        
+            # fps
+            self.frame_count += 1
+            if self.frame_count == 1: # first frame
+                self.t0 = time.time()
+            else:
+                self.lblFps.setText(str(round(self.frame_count / (time.time()-self.t0), 1))+' fps')
+            
+            
             self.data_buffer.append(data)
             if len(self.data_buffer) > self.navg:
                 self.data_buffer = self.data_buffer[1:]
@@ -343,23 +381,24 @@ class SweepAxis:
     ```
     """
     
-    def __init__(self, val_list, fn_next = lambda val: print(val), label='sweep', disable=False):
+    def __init__(self, val_list, fn_next = lambda val: print(val), label='sweep', enable=True):
         self.current_index = 0
         self.val_list = val_list
         self.axis = [min(val_list), max(val_list)]
         self.label = label
         self.fn_next = fn_next
-        self.disable = disable
-        if disable:
-            self.axis = [0, 1]
+        self.enable = enable
+        if not enable:
+            self.axis = [0, len(val_list)]
+            self.label = "count"
 
     def next(self):
-        if self.disable: return
+        if not self.enable: return
         self.fn_next(self.val_list[self.current_index])
         self.current_index = (self.current_index + 1) % len(self.val_list)
     
     def shift(self, step):
-        if self.disable: return
+        if not self.enable: return
         self.val_list = np.array(self.val_list) + step
     
     def __len__(self):

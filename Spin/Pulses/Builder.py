@@ -27,6 +27,8 @@ class Segment(object):
         self.duration = duration
         self.offset = offset
         self.mark = mark
+        if mark is True: self.mark = (0,1)
+        if mark is False: self.mark = (0,0)
         self.waveform = waveform
         self.envelope = envelope
         self.sweep_dict = {key:val for key, val in sweep_dict.items()}
@@ -114,13 +116,19 @@ class Pulse(object):
     def __getitem__(self, i):
         return self.segments[i]
 
+    def add(self, **kwargs):
+        """ **kwargs are given to Segment. Then it's added to the pulse """
+        seg = Segment(**kwargs)
+        self.addSegment(seg)
     
     def addSegment(self, *segments):
+        """ give an instance of Segment, then it's added to the pulse """
         for segment in segments:
             self.segments.append(segment)
             self.duration += segment.duration
     
     def removeSegment(self, i_segment):
+        """ remove a segment by its index """
         self.duration -= self.segments[i_segment].duration
         self.segments.pop(i_segment)
     
@@ -144,6 +152,12 @@ class Pulse(object):
         for segment in self.segments:
             marks = np.concatenate((marks, segment.getMarks(sample_rate, val_low, val_high)))
         return marks
+    
+    def getMarkDuration(self, sample_rate):
+        """ return the total duration of high marks """
+        marks = self.getMarks(sample_rate, val_high=1)
+        nbpts_high = len(np.where(marks==1)[0])
+        return nbpts_high / sample_rate
 
     def getArea(self):
         return sum([seg.getArea() for seg in self.segments])
@@ -240,19 +254,19 @@ class Pulse(object):
             sequence.addSegment(*new_segments)
         return sequence
         
-    def genMarksOnly(self):
+    def genMarksOnly(self, name=''):
         """ return a copy of self with a constant 0 waveform """
-        pulse = Pulse()
+        pulse = Pulse(name=name)
         for seg in self.segments:
             pulse.addSegment(Segment(duration=seg.duration, mark=seg.mark, offset=0))
         return pulse
     
-    def plot(self, *other_pulses, sample_rate=10e5):
+    def plot(self, *other_pulses, sample_rate=10e5, **kwargs):
         if len(other_pulses) >0:
             pulses = [self] + list(other_pulses)
-            plotXpulses(*pulses, sample_rate=sample_rate)
+            plotXpulses(*pulses, sample_rate=sample_rate, **kwargs)
             return
-        plotPulse(self, sample_rate)
+        plotPulse(self, sample_rate, **kwargs)
 
 
 def compensateAndEqualizeTime(pulse1, pulse2, value):
@@ -276,15 +290,19 @@ def plotPulse(pulse, sample_rate=10e5, fig_axes=(None, None, None),
             highlight=[],
             superpose=False,
             plot_kwargs={},
-            return_fig_axes=False):
+            return_fig_axes=False,
+            wide=False,
+            relative_time=False):
     """Make a plot for pulse and its marker
     highlight is a list of index to color specified segments.
     superpose is for swept generated pulse
     Its simpler to call it via pulse.plot()
     For multiple pulses, use pulse.plot(*other_pulses) which call plotXpulses
+    relative_time: start time axis (t=0) when marker is high
     """
     if None in fig_axes:
-        fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [2, 1]})
+        figsize = {True:(8,2), 'wide':(8,2), 'wider':(16,2)}.get(wide, None)
+        fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [2, 1]}, figsize=figsize)
     else:
         fig, ax1, ax2 = fig_axes
     fig.suptitle('Pulse')
@@ -294,6 +312,10 @@ def plotPulse(pulse, sample_rate=10e5, fig_axes=(None, None, None),
     wave = pulse.getWave(sample_rate)
     marks = pulse.getMarks(sample_rate)
     timestep = pulse.getTimestep(sample_rate)
+    
+    if relative_time:
+        first_high = np.where(marks==1)[0][0]
+        timestep -= timestep[first_high]
 
     custom_color = plot_kwargs.pop('color', None)
     wav_color = 'tab:blue' if custom_color is None else custom_color
@@ -348,15 +370,16 @@ def plot2ChannelPulse(pulse1, pulse2, sample_rate=10e5, name1='pulse1', name2='p
     fig.tight_layout()
 
 
-def plotXpulses(*args, sample_rate=10e5):
+def plotXpulses(*args, sample_rate=10e5, **kwargs):
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for i, pulse in enumerate(args):
         name = pulse.name + '_i' if pulse.name == 'Pulse' else pulse.name
         if i == 0:
-            fig, ax1, ax2 = plotPulse(args[i], sample_rate, return_fig_axes=True, plot_kwargs={'color':colors[i%len(colors)], 'label':name})
+            fig, ax1, ax2 = plotPulse(args[i], sample_rate, return_fig_axes=True, plot_kwargs={'color':colors[i%len(colors)], 'label':name}, **kwargs)
             continue
-        plotPulse(pulse, sample_rate, fig_axes=(fig, ax1, ax2), plot_kwargs={'color':colors[i%len(colors)], 'label':name})
-    ax1.legend()
+        plotPulse(pulse, sample_rate, fig_axes=(fig, ax1, ax2), plot_kwargs={'color':colors[i%len(colors)], 'label':name}, **kwargs)
+    loc = kwargs.get('loc', 'upper right')
+    ax1.legend(loc='upper right')
 
     
 
