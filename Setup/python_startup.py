@@ -14,4 +14,4 @@ from matplotlib import pyplot as plt
 
 # PyHegel:
 from pyHegel.scipy_fortran_fix import fix_problem_new
-from PyHegel.commands import *
+from pyHegel.commands import *

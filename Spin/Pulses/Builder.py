@@ -1,4 +1,5 @@
 from .Shapes import *
+from .ShapeCompensation import *
 from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
@@ -95,7 +96,7 @@ class Pulse(object):
     """ A pulse is a concatenation of Segments
     """
 
-    def __init__(self, *segments, name='Pulse', inverse_mark=False):
+    def __init__(self, *segments, name='Pulse', inverse_mark=False, shape_comp=False):
         self.name = name
         self.segments = []
         self.duration = 0.
@@ -103,8 +104,9 @@ class Pulse(object):
         # a sequence is a repetition of pulses.
         self.nb_rep = 1 # for a sequence: the number of repetitions
         self.sub_pulse_seg_count = 0 # for a sequence: the number of segments in the original pulse
-        self.compensate = 0. # for a sequence: the compensation value
+        self.compensate = 0. # for a sequence: the dc compensation value
         self.inverse_mark = inverse_mark # True to invert high marks and low marks
+        self.shape_comp = shape_comp # if True, use the transfert function from ShapeCompensation when getWave
     
     def __str__(self):
         ret = "Pulse("
@@ -116,9 +118,9 @@ class Pulse(object):
     def __getitem__(self, i):
         return self.segments[i]
 
-    def add(self, **kwargs):
+    def add(self, *args, **kwargs):
         """ **kwargs are given to Segment. Then it's added to the pulse """
-        seg = Segment(**kwargs)
+        seg = Segment(*args, **kwargs)
         self.addSegment(seg)
     
     def addSegment(self, *segments):
@@ -132,10 +134,12 @@ class Pulse(object):
         self.duration -= self.segments[i_segment].duration
         self.segments.pop(i_segment)
     
-    def getWave(self, sample_rate):
+    def getWave(self, sample_rate, force_no_shape_comp=False):
         wave = np.array([])
         for segment in self.segments:
             wave = np.concatenate((wave, segment.getWave(sample_rate)))
+        if self.shape_comp and not force_no_shape_comp:
+            wave = computeVint(self.getTimestep(sample_rate, wave), wave)
         return wave
 
     def getWaveNormalized(self, sample_rate):
@@ -162,8 +166,10 @@ class Pulse(object):
     def getArea(self):
         return sum([seg.getArea() for seg in self.segments])
     
-    def getTimestep(self, sample_rate):
-        return np.linspace(0., self.duration, len(self.getWave(sample_rate)))
+    def getTimestep(self, sample_rate, wave=None):
+        """ return a list of time for each point of the wave.
+        """
+        return np.linspace(0., self.duration, len(self.getWave(sample_rate) if wave is None else wave))
     
     def getIndexes(self, sample_rate):
         """ Returns the indexes of the segments in the wave.
@@ -270,7 +276,7 @@ class Pulse(object):
 
 
 def compensateAndEqualizeTime(pulse1, pulse2, value):
-    """ Add a compensation segment to each pulse and equalize their time with a 0 offset segment.
+    """ Add a dc compensation segment to each pulse and equalize their time with a 0 offset segment.
     """
     p1_comp_time = abs(pulse1.getArea()/value)
     p2_comp_time = abs(pulse2.getArea()/value)
@@ -289,6 +295,7 @@ def compensateAndEqualizeTime(pulse1, pulse2, value):
 def plotPulse(pulse, sample_rate=10e5, fig_axes=(None, None, None),
             highlight=[],
             superpose=False,
+            no_shape_comp=True,
             plot_kwargs={},
             return_fig_axes=False,
             wide=False,
@@ -309,7 +316,7 @@ def plotPulse(pulse, sample_rate=10e5, fig_axes=(None, None, None),
     ax1.grid(True); ax2.grid(True)
     ax2.set_xlabel('time (s)')
 
-    wave = pulse.getWave(sample_rate)
+    wave = pulse.getWave(sample_rate, force_no_shape_comp=no_shape_comp)
     marks = pulse.getMarks(sample_rate)
     timestep = pulse.getTimestep(sample_rate)
     
@@ -348,28 +355,6 @@ def plotPulse(pulse, sample_rate=10e5, fig_axes=(None, None, None),
     if return_fig_axes:
         return fig, ax1, ax2
 
-def plot2ChannelPulse(pulse1, pulse2, sample_rate=10e5, name1='pulse1', name2='pulse2'):
-    fig, [ax1, ax2, ax3] = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [2,2,1]})
-    ax1.grid(True); ax2.grid(True); ax3.grid(True)
-    ax1.set_title(name1)
-    ax2.set_title(name2)
-    ax3.set_xlabel('time (s)')
-
-    wave1 = pulse1.getWave(sample_rate)
-    wave2 = pulse2.getWave(sample_rate)
-    marks1 = pulse1.getMarks(sample_rate)
-    marks2 = pulse2.getMarks(sample_rate)
-    timestep1 = pulse1.getTimestep(sample_rate)
-    timestep2 = pulse2.getTimestep(sample_rate)
-    
-    ax1.plot(timestep1, wave1, color='tab:blue')
-    ax2.plot(timestep2, wave2, color='tab:orange')
-    ax3.plot(timestep1, marks1, color='tab:blue')
-    ax3.plot(timestep2, marks2, color='tab:orange')
-    
-    fig.tight_layout()
-
-
 def plotXpulses(*args, sample_rate=10e5, **kwargs):
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for i, pulse in enumerate(args):
@@ -382,17 +367,27 @@ def plotXpulses(*args, sample_rate=10e5, **kwargs):
     ax1.legend(loc='upper right')
 
     
+def genPWLFile(pulse, sample_rate, filename):
+    """Generate a PWL file from a pulse and a sample rate, merging consecutive duplicate values."""
+    # Get the waveform data
+    wave = pulse.getWave(sample_rate)
+    timelist = pulse.getTimestep(sample_rate)
+    timestep = np.diff(timelist)[0]
 
-
-# next step:
-# x compensate
-# x cst to ramp
-# x plot
-# x plot with highlight
-# x plot with superpose
-# x ui sweep
-# - better draw pulse
-# - generator
-
-# - test python2/python3
+    v_prev = wave[0]
+    all_pairs = [ [0, wave[0]] ]
+    
+    for v in wave[1:]:
+        if v == all_pairs[-1][1]:
+            all_pairs[-1][0] += timestep
+        else:
+            all_pairs.append([timestep, v])
+    
+    all_pairs = [(t, v) for t, v in zip(timelist, wave)]
+    #return all_pairs
+    with open(filename, 'w') as file:
+        for time, value in all_pairs:
+            file.write(f'{time:.15f}\t {value:.15f}\n')
+    
+    print(f'PWL file "{filename}" ok')
     

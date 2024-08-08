@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QMainWindow, QPushButton, \
     QGridLayout, QSpinBox, QWidget, QProgressBar, QLabel, QApplication
 
 from pyHegel.gui import ScientificSpinBox
+from pyHegel.commands import wait
 import pyqtgraph as pg
 import pyqtgraph.exporters
 
@@ -14,14 +15,14 @@ import numpy as np
 
 class VideoModeWindow(QMainWindow):
     
-    def __init__(self, fn_get=None, dim=1, show=True, play=False, 
+    def __init__(self, fn_get=None, dim=1, show=True, play=False, take_focus=False,
                  sec_between_frame=0.01,
                  axes_dict={'x': [0, 1], 'y': [0, 1]},
-                 fn_xshift=None,
-                 fn_yshift=None,
-                 xlabel=None,
-                 ylabel=None,
-                 wrap_at=0, wrap_direction='h', pause_after_one=False,
+                 fn_xshift=None, fn_yshift=None,
+                 xlabel=None, ylabel=None,
+                 #fix_xaxis=False, fix_yaxis=False,
+                 wrap_at=0, wrap_direction='h',
+                 pause_after_one=False,
                  ysweep=None, xsweep=None,
                  window_size=False):
         """
@@ -35,6 +36,7 @@ class VideoModeWindow(QMainWindow):
             show the window by default
         play : BOOL
             pause by default
+            if True and take_focus: will not return until pause is pressed
         sec_between_frame : float
             if fn_get is too fast, this should be >0 to not overload the display thread.
         axes_dict: dict
@@ -180,6 +182,11 @@ class VideoModeWindow(QMainWindow):
             self.resize(1000, 500)
         elif window_size == 'wider':
             self.resize(1000, 200)
+            
+        if take_focus:
+            while not self.vthread.pause:
+                wait(2)
+            return
         
     def closeEvent(self, event):
         self.stop()

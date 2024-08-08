@@ -9,6 +9,11 @@ from pyHegel.types import dict_improved
 from pyHegel.instruments_base import BaseInstrument
 
 from Pulses.Builder import *
+from Analyse.analyse import *
+
+from PyQt5.QtGui import QImage
+from PyQt5.QtWidgets import QApplication
+import io
 
 import threading
 #### INSTRUMENTS ####
@@ -82,7 +87,10 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
     awg.waveform_create(wave, wv_name, sample_rate=awg_sr, amplitude=2*wave_max_val*gain, force=True)
     awg.waveform_marker_data.set(marks, wfname=wv_name)
     awg.channel_waveform.set(wv_name,ch=channel)
-    awg.volt_ampl.set(2*wave_max_val*gain, ch=channel)
+    amp = 2*wave_max_val*gain
+    if amp > 0.750:
+        print(f"Warning: need a volt amplitude with gain above 750mV: {amp}V")
+    awg.volt_ampl.set(amp, ch=channel)
 
         
     awg.sample_rate.set(awg_sr)
@@ -101,28 +109,6 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         plt.plot(wave)
         plt.plot(marks)
         plt.title(wv_name)
-
-def acquire(ats, digitize=False, threshold=0., sigma=1, return_average_trace=False, show_plot=False):
-    """ do the measurment sequence:
-        ats get image and timelist
-        filter and digitize if necessary
-        return either full image or average trace
-    """
-
-    image, timelist = getATSImage(ats, with_time=True) # [[trace0], [trace1], ..., [traceNWindow]], [t0, t1, ..., t_SR*AcquisitionLength]    
-
-    if digitize: 
-        image = gaussianLineByLine(image, sigma=sigma)
-        image = digitizeArray(image, threshold)
-    
-    if return_average_trace:
-        average_trace = averageLines(image)
-        if show_plot:
-            plt.plot(timelist, average_trace)
-        return average_trace, timelist
-    if show_plot:
-        imshow(image, x_axis=timelist)
-    return image, timelist
 
 
 #### DOT ####
@@ -175,13 +161,6 @@ def autoFindTunnelRate(ats, awg, gain, threshold, opposite_offset=False, plot=Fa
 
 #### SIGNAL FILTERING ####
 
-def gaussianLineByLine(image, sigma=20, **kwargs): 
-    try:
-        dim2 = len(image[0])
-        return np.array([ndimage.gaussian_filter1d(line, sigma, **kwargs) for line in image])
-    except:
-        return ndimage.gaussian_filter1d(image, sigma, **kwargs)
-
 def _doubleGaussian(x, sigma1, sigma2, mu1=0., mu2=0., A1=3.5, A2=3.5):
     """ use for fitting state repartition
     sigma: curvature =1:sharp, =15:very flatten
@@ -225,23 +204,6 @@ def classifiyArray(image, threshold):
     bool_image = image>threshold
     int_image = np.array(bool_image, dtype=int)
     return int_image
-
-def averageLines(image):
-    """ from [[trace1], ..., [tracen]] to [trace_mean].
-        from 2d to 1d.
-    example:
-        arr = np.array([[1,1,1,1,1],[2,2,2,2,2],[3,3,3,3,3]])
-        
-        arr.mean(axis=0)
-        Out[]: array([2., 2., 2., 2., 2.]) <-- GOOD
-        
-        arr.mean(axis=1)
-        Out[]: array([1., 2., 3.])
-    """
-    image = np.array(image)
-    return image.mean(axis=0)
-
-
 
 
 
@@ -340,9 +302,13 @@ def classifyTraces(data_digit, time, return_stats=True):
     
     return {'avg_spin_up': avg_blip_trace, 'avg_spin_down': avg_no_blip_trace, 'nb_exclude':len(exclude_traces)}
 
+def histogram(arr, bins=100, get_bins=False, **kwargs):
+    hist, bin_list = np.histogram(arr, bins, **kwargs)
+    return hist if not get_bins else hist, bin_list
+
 def histogramOnEachColumns(arr, bins=100, get_bins=False):
     im = []
-    _, bin_list = np.histogram(arr.flatten(), bins=100)
+    _, bin_list = np.histogram(arr.flatten(), bins=bins)
     
     for i in range(arr.shape[1]):
         col = arr[::,i]
@@ -351,7 +317,7 @@ def histogramOnEachColumns(arr, bins=100, get_bins=False):
     if get_bins:
         return np.array(im).T, bin_list
     return np.array(im).T
-        
+
 
 ### USEFUL THINGS ###
 
@@ -394,33 +360,42 @@ def readfileNdim(file):
     for i in range(10):
         imshow(data[3][i].T, x_axis=data[2,1,0], y_axis=data[1,1][::,1], x_label='P2', y_label='P1', title=f"B1={round(data[0][i][0][0], 3)}")
     """
+    
     data, titles, headers = commands.readfile(file, getheaders=True, multi_sweep='force', multi_force_def=np.nan)
     return data, titles, headers
 
-def showfile2dim(data, x_label='', y_label='', title='', is_alternate=False, transpose=False):
+def showfile2dim(data, x_label='', y_label='', title='', cbar=False,
+                 is_alternate=False, transpose=False, deinterlace=False,
+                 out_id=2):
     """
     data is the result of readfileNdim[0]
     titles is the result of readfileNdim[1]
     transpose: False | True (data and axes)
     """
     if is_alternate:
-        img = alternate(data[3]).T
+        img = alternate(data[out_id]).T
     else:
-        img = data[3].T
+        img = data[out_id].T
         
     if transpose != False:
         x_label, y_label = y_label, x_label
         img = img.T
-        
-    imshow(img, 
-           x_axis=data[0][::,1], y_axis=data[1,0], 
-           x_label=x_label, y_label=y_label, 
-           title=title, cbar=False)
+    
+    imshow_kw = dict(x_axis=data[0][::,1], y_axis=data[1,0], 
+                     x_label=x_label, y_label=y_label, title=title, cbar=cbar)
+
+    if deinterlace:
+        img1 = img.T[0::2, :].T
+        img2 = img.T[1::2, :].T
+        imshow(img1, **imshow_kw)
+        imshow(img2, **imshow_kw)
+        return        
+    imshow(img, **imshow_kw)
 
 def getFirstAxisList(data3d):
     return [(i, round(image_i[0][0], 4)) for i, image_i in enumerate(data3d[0])]
 
-def showfile3dim(data, first_axis_label='', x_label='', y_label='', cbar=False, 
+def showfile3dim(data, first_axis_label='', x_label='', y_label='', cbar=False,
                  is_alternate=False, transpose=False, deinterlace=False,
                  first_axis_ids=[]):
     """ take the output of a readfile data for a 3d sweep, plot an image for each first axis values
@@ -456,22 +431,7 @@ def showfile3dim(data, first_axis_label='', x_label='', y_label='', cbar=False,
             imshow(img2 if transpose else img2.T, title=f"{first_axis_label}={first_axis_list[i][1]}, impaires", **imshow_kw)
             continue
             
-        imshow(img if transpose else img.T, title=f"{first_axis_label}={first_axis_list[i][1]}, B2=0.5", **imshow_kw )
-
-def alternate(arr, enable=True):
-    """ returns a copied array with odd rows flipped """
-    if not enable: return arr
-    ret = arr.copy()
-    ret[1::2, :] = ret[1::2, ::-1]
-    return ret
-
-def flip(arr, axis=-1, enable=True):
-    """ returns a copied flipped array allong axis """
-    if not enable: return arr
-    ret = arr.copy()
-    ret = np.flip(ret, axis=axis)
-    return ret
-
+        imshow(img if transpose else img.T, title=f"B1=0.35, B2={first_axis_list[i][1]}", **imshow_kw )
 
 def saveToNpz(path, filename, array, metadata={}):
     """ Save array to an npz file.
@@ -529,7 +489,6 @@ def imshow(array, **kwargs):
     with easier axis extent: x_axis=, y_axis=.
     and saving to npz with all kwargs
     """
-    
     kwargs['interpolation'] = 'none'
     kwargs['aspect'] = 'auto'
     kwargs['origin'] = 'lower'
@@ -543,40 +502,57 @@ def imshow(array, **kwargs):
         saveToNpz(path, filename, array, metadata=metadata)
         
         
-    # axes
-    x_axis = kwargs.pop('x_axis', [None])
-    if isinstance(x_axis, (int, float)):
-        x_axis = [0, x_axis] if x_axis > 0 else [x_axis, 0]
-    
-    y_axis = kwargs.pop('y_axis', [None])
-    if isinstance(y_axis, (int, float)):
-        y_axis = [0, y_axis] if y_axis > 0 else [y_axis, 0]
-        
+    # AXES: [start, stop] or just 'stop' (will be converted to [0, stop])
+    def _prepAxis(lbl):
+        axis = kwargs.pop(lbl, [None])
+        if isinstance(axis, (int, float)):
+            axis = [0, axis] if axis > 0 else [axis, 0]
+        return axis
+    x_axis = _prepAxis('x_axis')
+    y_axis = _prepAxis('y_axis')
     if None not in x_axis and None in y_axis:
         y_axis = [0, len(array)]
         
     extent = (x_axis[0], x_axis[-1], y_axis[0], y_axis[-1])
-    
     if None not in extent:  
         kwargs['extent'] = extent
+    
+    x_axis2 = _prepAxis('x_axis2')
+    x_label2 = kwargs.pop('x_label2', None)
+        
     x_label = kwargs.pop('x_label', None)
     y_label = kwargs.pop('y_label', None)
-    
     title = kwargs.pop('title', '')
-    
-    # colorbar
     cbar = kwargs.pop('cbar', True)
     
-    fig = plt.figure()
-    im = plt.imshow(array, **kwargs)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.title(title)
-    if cbar:
-        fig.colorbar(im)
+    # PLOT
+    fig, ax = plt.subplots()
+    im = ax.imshow(array, **kwargs)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    if cbar: fig.colorbar(im, ax=ax)
+        
+    # Create secondary x-axis
+    if x_axis2 != [None]:
+        ax2 = ax.twiny()
+        ax2.set_xlim(*x_axis2)
+        ax2.set_xlabel(x_label2)
+
+    # TODO save this to metadata when save=True
+    def figToClipboard():
+        with io.BytesIO() as buffer:
+             fig.savefig(buffer)
+             QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))
+    def onKeyPress(event):
+        if event.key == "ctrl+c":
+            figToClipboard()
+
+    fig.canvas.mpl_connect('key_press_event', onKeyPress)
+    fig.tight_layout() 
     fig.show()
 
-def qplot(x, y=None, xlabel='', ylabel='', title='', same_fig=False):
+def qplot(x, y=None, x_label='', y_label='', title='', same_fig=False):
     """ quick 1d plot """
     if not same_fig:
         plt.figure()
@@ -584,7 +560,64 @@ def qplot(x, y=None, xlabel='', ylabel='', title='', same_fig=False):
         plt.plot(x)
     else:
         plt.plot(x, y)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
     plt.title(title)
+
+
+
+
+def plotColumns(array, interval, x_axis=None, y_axis=None, x_label='', y_label='', title='', 
+                z_label='', reverse=False, cbar=False):
+    """chatgpt
+    Plots every 'interval'-th column of a 2D array with a color gradient.
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+    import numpy as np
+
+    cmap = cm.get_cmap('viridis')
+    num_columns = (array.shape[1] - 1) // interval + 1
     
+    if reverse:
+        column_indices = range(array.shape[1] - 1, -1, -interval)
+    else:
+        column_indices = range(0, array.shape[1], interval)
+
+    # Create a figure and axis
+    fig, ax = plt.subplots()
+
+    # Create a ScalarMappable object for the colorbar
+    norm = mcolors.Normalize(vmin=0, vmax=num_columns - 1)
+    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    
+    colors = []
+
+    # Plot each selected column with a color from the color map
+    for i, idx in enumerate(column_indices):
+        color = cmap(i / num_columns)  # Normalize index for color map
+        colors.append(color)
+        if x_axis is None:
+            x_values = range(array.shape[0])
+        else:
+            x_values = x_axis
+        
+        if y_axis is None:
+            y_values = array[:, idx]
+        else:
+            y_values = y_axis[:, idx]  # Assuming y_axis has the same shape as array
+        
+        ax.plot(x_values, y_values, color=color, label=f'Column {idx}')
+
+    # Add colorbar if required
+    if cbar:
+        fig.colorbar(sm, ax=ax, label=z_label)
+
+    # Set axis labels and title
+    ax.set_xlabel(x_label if x_label else 'Index')
+    ax.set_ylabel(y_label if y_label else 'Value')
+    ax.set_title(title)
+    #ax.legend()
+
+    plt.show()
