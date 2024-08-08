@@ -1,20 +1,10 @@
 # %% init
-%load_ext autoreload
-%autoreload 2
-%gui qt
-
-from pyHegel.commands import *
-_init_pyHegel_globals()
-
-import numpy as np
-from scipy.ndimage import gaussian_filter1d
-
 LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
 LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
 
-
 %cd $LAB_SCRIPT_PATH/Spin/
 LOG_PATH = LAB_SCRIPT_PATH + "/Spin/logs"
+
 from MyUtils import *
 from Analyse.analyse import *
 from Pulses.Builder import *
@@ -25,12 +15,14 @@ from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
 awg_sr = 40e4
-awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger') 
-awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger') 
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False:
+    sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
+awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
 awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
 awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
-awg.write('SOURce2:DAC:RESolution 15') 
-awg.write('SOURce3:DAC:RESolution 15') 
+awg.write('SOURce2:DAC:RESolution 15')
+awg.write('SOURce3:DAC:RESolution 15')
 # debug: awg.clear()
 
 ats = instruments.ATSBoard(systemId=1, cardId=1)
@@ -51,8 +43,8 @@ def acquire(acq_time):
 bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
 ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
 
-zi = instruments.zurich_UHF("dev2949")
-zi_get = lambda: commands.get((zi.readval, {'vals': ['r'], 'ch': 0}))[0]
+#zi = instruments.zurich_UHF("dev2949")
+#zi_get = lambda: commands.get((zi.readval, {'vals': ['r'], 'ch': 0}))[0]
 
 rhP1 = bi3 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
 rhP2 = bi1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
@@ -60,9 +52,6 @@ def shiftP1(val): rhP1.ramp.set(rhP1.get()+val)
 def shiftP2(val): rhP2.ramp.set(rhP2.get()+val)
 
 # %% VM RAMP sur P1
-awg_sr = 40e4
-
-
 valueP1, deltaP1, timeP1 = 1.08, 0.023, 0.012
 valueP2, deltaP2, nbP2 = 0.620, 0.05, 101
 
@@ -73,17 +62,18 @@ ramp_direction = 'up' # 'up' or 'down'
 listP2 = np.linspace(valueP2-deltaP2, valueP2+deltaP2, nbP2)
 pulseP1 = Pulse(name='P1', shape_comp=True)
 pulseP1.add(timeP1)
-pulseP1.add(timeP1, waveform=Ramp({'up':-1, 'down':+1}[ramp_direction]*deltaP1, 
+pulseP1.add(timeP1, waveform=Ramp({'up':-1, 'down':+1}[ramp_direction]*deltaP1,
                                   {'up':+1, 'down':-1}[ramp_direction]*deltaP1), mark=True,)
 pulseP1.add(sync_time_after_ramp)
 
 pulseP2 = pulseP1.genMarksOnly(name='P2')
 #pulseP1.plot(pulseP2, wide=True, no_shape_comp=False)
 
-# setting
-sendSeqToAWG(awg, pulseP1, channel=1, run_after=False, awg_sr=awg_sr, round_nbpts_to_mod64='last')
-sendSeqToAWG(awg, pulseP2, channel=2, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
-sendSeqToAWG(awg, pulseP1, channel=3, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+# send to awg
+send(pulseP1, ch=1)
+send(pulseP2, ch=2)
+send(pulseP2, ch=3, run_after=True)
+
 ats.acquisition_length_sec.set(timeP1)
 rhP1.ramp.set(valueP1)
 rhP2.ramp.set(valueP2)
@@ -91,23 +81,23 @@ rhP2.ramp.set(valueP2)
 #  "video" mode
 
 sweepP2 = SweepAxis(listP2, fn_next=rhP2.ramp.set, label='P2', enable=True)
-    
+
 def vmget():
     sweepP2.next()
     data = acquire(timeP1)
     if ramp_direction=='down': data = np.flip(data)
-    data = gaussianLineByLine(data, 2)
+    data = gaussian(data, 2)
     return data
 
 
-vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"P1 ramp", xsweep=sweepP2, 
+vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"P1 ramp", xsweep=sweepP2,
                      axes_dict={'y':[valueP1-deltaP1, valueP1+deltaP1]},fn_yshift=shiftP1)
 
 
 # %% PSB pulse read ramp
 #   (P1  ,  P2)
 R = (0    , 0)
-I = (-.014 , -.014 ) 
+I = (-.014 , -.014 )
 L = (-.012 , +.014)
 tI, tL, tR = 0.005, 0.004, 0.004
 read_delta = (0.001, 0.000)
@@ -135,20 +125,19 @@ genPWLFile(pulseP2, awg_sr, 'psb_pulse.txt')
 acq_time = pulseP1.getMarkDuration(awg_sr)
 ats.acquisition_length_sec.set(acq_time)
 
-sendSeqToAWG(awg, pulseP1, channel=1, run_after=False, awg_sr=awg_sr, round_nbpts_to_mod64='last')
-sendSeqToAWG(awg, pulseP2, channel=2, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
-sendSeqToAWG(awg, pulseP1, channel=3, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+send(pulseP1, 1)
+send(pulseP2, 2)
+send(pulseP1, 3, run_after=True)
 
 
-# %% 
 # %% PSB vm
 read_level =( 1.08, 0.621 )
 rhP1.ramp.set(read_level[0])
-rhP2.ramp.set(read_level[1])    
+rhP2.ramp.set(read_level[1])
 
-# sweep = SweepAxis(np.linspace(read_level[0]-0.004, read_level[0]+0.004, 101), fn_next=rhP1.ramp.set, label='P1', 
+# sweep = SweepAxis(np.linspace(read_level[0]-0.004, read_level[0]+0.004, 101), fn_next=rhP1.ramp.set, label='P1',
                     # enable=True)
-sweep = SweepAxis(np.linspace(read_level[1]-0.003, read_level[1]+0.003, 101), fn_next=rhP2.ramp.set, label='P2', 
+sweep = SweepAxis(np.linspace(read_level[1]-0.003, read_level[1]+0.003, 101), fn_next=rhP2.ramp.set, label='P2',
                     enable=False)
 
 def vmget():
@@ -167,7 +156,7 @@ vm = VideoModeWindow(fn_get=vmget, dim=1,
 # %% PSB trace x fois
 read_level =( 1.08, 0.621 )
 rhP1.ramp.set(read_level[0])
-rhP2.ramp.set(read_level[1])  
+rhP2.ramp.set(read_level[1])
 
 vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, wrap_at=1000,
                       xlabel=f"time (s)", axes_dict={'x':ats.acquisition_length_sec.get()},
@@ -187,7 +176,7 @@ plotColumns(hist, interval=10, x_label='bins', y_label='signal', cbar=True, z_la
 # %% PSB pulse read still
 #   (P1  ,  P2)
 R = (0    , 0)
-I = (-.014 , -.014 ) 
+I = (-.014 , -.014 )
 L = (-.012 , +.014)
 tI, tL, tR = 0.005, 0.004, 0.004
 read_delta = (0.001, 0.000)
@@ -213,9 +202,9 @@ genPWLFile(pulseP2, awg_sr, 'psb_pulse.txt')
 acq_time = pulseP1.getMarkDuration(awg_sr)
 ats.acquisition_length_sec.set(acq_time)
 
-sendSeqToAWG(awg, pulseP1, channel=1, run_after=False, awg_sr=awg_sr, round_nbpts_to_mod64='last')
-sendSeqToAWG(awg, pulseP2, channel=2, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
-sendSeqToAWG(awg, pulseP1, channel=3, run_after=True, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+send(pulseP1, 1)
+send(pulseP2, 2)
+send(pulseP1, 3, run_after=True)
 
 
 # %% PSB trace x fois
@@ -235,12 +224,12 @@ for val in p1_list:
     vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, wrap_at=2000,
                           xlabel=f"time (s)", axes_dict={'x':ats.acquisition_length_sec.get()},
                           pause_after_one=True, play=True, take_focus=True)
-    
+
     traces = np.array(vm.data_buffer[0].T)
-    
+
     imshow(traces, x_axis=acq_time,
            title=f"P1={val}, B1=0.35, B2=0.3", y_label='count', x_label='time (s)', cbar=True,
-           save=True, path=LOG_PATH, filename=f"read_traces_at_p1_{val}", 
+           save=True, path=LOG_PATH, filename=f"read_traces_at_p1_{val}",
            metadata=dict(pulsep1=str(pulseP1), pulsep2=str(pulseP2)))
-    
+
     vm.close()
