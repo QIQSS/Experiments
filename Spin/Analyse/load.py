@@ -70,9 +70,19 @@ def readfileNdim(file):
     data, titles, headers = commands.readfile(file, getheaders=True, multi_sweep='force', multi_force_def=np.nan)
     return data, titles, headers
 
+
+def _completeAxis(incomplete_axis):
+    """ try to build axis from incomplete pyHegel sweep """
+    nbpts = len(incomplete_axis)
+    nonan = incomplete_axis[~np.isnan(incomplete_axis)]
+    #step = (nonan[-1]-nonan[0]) / len(nonan)
+    step = round(nonan[1]-nonan[0], 10)
+    return np.linspace(nonan[0], nonan[0]+step*(nbpts-1), nbpts)
+
 def showfile2dim(data, x_label='', y_label='', title='', cbar=False,
                  is_alternate=False, transpose=False, deinterlace=False,
-                 out_id=2):
+                 out_id=2,
+                 **kwargs_for_imshow):
     """
     data is the result of readfileNdim[0]
     titles is the result of readfileNdim[1]
@@ -87,8 +97,13 @@ def showfile2dim(data, x_label='', y_label='', title='', cbar=False,
         x_label, y_label = y_label, x_label
         img = img.T
     
-    imshow_kw = dict(x_axis=data[0][::,1], y_axis=data[1,0], 
-                     x_label=x_label, y_label=y_label, title=title, cbar=cbar)
+    y_axis = data[1,0]
+    x_axis = data[0][::,1]
+    x_axis = _completeAxis(x_axis)
+    
+    imshow_kw = dict(x_axis=[x_axis[0], x_axis[-1]], y_axis=[y_axis[0], y_axis[-1]], 
+                     x_label=x_label, y_label=y_label, title=title, cbar=cbar,
+                     **kwargs_for_imshow)
 
     if deinterlace:
         img1 = img.T[0::2, :].T

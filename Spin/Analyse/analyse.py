@@ -48,16 +48,16 @@ def averageLines(image):
     image = np.array(image)
     return image.mean(axis=0)
 
-def head(arr, x): 
+def head(arr, x=10): 
     """ extract the x first lines of array """
     return arr[:x]
-def tail(arr, x):    
+def tail(arr, x=10):    
     """ extract the x last lines of array """
     return arr[len(arr)-x:]
-def chead(arr2d, x): 
+def chead(arr2d, x=10): 
     """ extract the x first columns of 2d array """
     return arr2d[:, :x]
-def ctail(arr2d, x): 
+def ctail(arr2d, x=10): 
     """ extract the x last columns of 2d array """
     return arr2d[:, len(arr2d[0])-x:]
 
@@ -83,6 +83,14 @@ def gaussianLineByLine(image, sigma=20, **kwargs):
 
 
 #### compute things
+
+def findNearest(array, value, return_id=False):
+    """ find the nearest element of value in array.
+    return the value or the index """
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    if return_id: return idx
+    return array[idx]
 
 def histogram(arr, bins=100, get_bins=False, **kwargs):
     hist, bin_list = np.histogram(arr, bins, **kwargs)
