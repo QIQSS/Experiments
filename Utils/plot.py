@@ -15,20 +15,25 @@ from . import analyse
 import matplotlib.colors as mcolors
 
 def imshow(array, 
+           
+           # saving
            save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
            
+           # axis
            x_axis=[None], y_axis=[None], x_label='', y_label='',
            x_axis2=[None], x_label2='', y_axis2=[None], y_label2='',
+           
            x_slice=(None,None), y_slice=(None, None), slice_by_val=False,
            
+           # plot stuff
            title='', text='', text_pos='dr', text_color='grey',
-           cbar=True, cbar_label='', cbar_title='',
-           grid=False,
+           cbar=True, cbar_label='', cbar_title='', grid=False,
            random_cmap=False, randomize_cmap=False,
            use_latex=False,
            figsize=None,
+           
            **plot_kwargs):
-    """ my custom imshow function.
+    """ boosted imshow function.
     with easier axis extent: x_axis=, y_axis=.
     and saving to npz with all kwargs.
     Custom plot window: ctrl-c copy the plot to clipboard
@@ -147,7 +152,6 @@ def imshow(array,
         axy2.set_ylim(*y_axis2)
         axy2.set_ylabel(y_label2)
 
-
     if cbar:
         fig.colorbar(im, label=cbar_label, ax=ax, cax=cax)
         cax.set_title(cbar_title)
@@ -163,7 +167,17 @@ def imshow(array,
         if event.key == "ctrl+c":
             figToClipboard()
     fig.canvas.mpl_connect('key_press_event', onKeyPress)
-
+                
+    if text:
+        pos_dict = {'u': 0.95, 'r': 0.95, 'd':0.05, 'l':0.05 }
+        pos = (pos_dict[text_pos[1]], pos_dict[text_pos[0]])
+        va = {'u':'top', 'd':'bottom'}[text_pos[0]]
+        ha = {'r':'right', 'l':'left'}[text_pos[1]]
+        ax.text(*pos, f"{text}", color=text_color, fontsize=12,
+            ha=ha, va=va, transform=ax.transAxes)
+    
+    fig.tight_layout()
+    
     # saving
     if save:
         all_kwargs.pop('save')
@@ -178,16 +192,7 @@ def imshow(array,
             png_buffer.seek(0)
             metadata['_png'] = png_buffer.getvalue()
         text_on_graph = load.saveToNpz(path, filename, array, metadata=metadata)
-                
-    if text:
-        pos_dict = {'u': 0.95, 'r': 0.95, 'd':0.05, 'l':0.05 }
-        pos = (pos_dict[text_pos[1]], pos_dict[text_pos[0]])
-        va = {'u':'top', 'd':'bottom'}[text_pos[0]]
-        ha = {'r':'right', 'l':'left'}[text_pos[1]]
-        ax.text(*pos, f"{text}", color=text_color, fontsize=12,
-            ha=ha, va=va, transform=ax.transAxes)
-    
-    fig.tight_layout()
+
     #fig.show()
     #return fig
 

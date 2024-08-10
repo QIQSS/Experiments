@@ -274,6 +274,10 @@ class Pulse(object):
             return
         plotPulse(self, sample_rate, **kwargs)
 
+    def compensateAndEqualizeTime(self, pulse2, value):
+        compensateAndEqualizeTime(self, pulse2, value)
+    def genPWLFile(self, sample_rate, filename):
+        genPWLFile(self, sample_rate, filename)
 
 def compensateAndEqualizeTime(pulse1, pulse2, value):
     """ Add a dc compensation segment to each pulse and equalize their time with a 0 offset segment.
