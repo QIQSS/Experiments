@@ -4,11 +4,11 @@ my ipython startup config
 
 # ipython:
 from IPython import get_ipython
-if (ipy := get_ipython()):
-    ipy.run_line_magic('load_ext', 'autoreload')
-    ipy.run_line_magic('autoreload', '2')
-    ipy.run_line_magic('autocall', '1')
-    ipy.run_line_magic('gui', 'qt')
+if (_ipy := get_ipython()):
+    _ipy.run_line_magic('load_ext', 'autoreload')
+    _ipy.run_line_magic('autoreload', '2')
+    _ipy.run_line_magic('autocall', '1')
+    _ipy.run_line_magic('gui', 'qt')
 
 # Packages:
 import numpy as np
