@@ -14,11 +14,11 @@ from . import analyse
 
 import matplotlib.colors as mcolors
 
-def imshow(array, 
+def imshow(array, show=True,
            save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
            
-           x_axis=[None], y_axis=[None], x_label='', y_label='',
-           x_axis2=[None], x_label2='', y_axis2=[None], y_label2='',
+           x_axis=None, y_axis=None, x_label='', y_label='',
+           x_axis2=None, x_label2='', y_axis2=None, y_label2='',
            x_slice=(None,None), y_slice=(None, None), slice_by_val=False,
            
            title='', text='', text_pos='dr', text_color='grey',
@@ -37,7 +37,7 @@ def imshow(array,
         save = False
         path = './'
         filename = f"YYYMMDD-HHMMSS-{}"
-        metadata = {} # this function kwargs are automatically appended to it
+        metadata = {} # any dict, + this function kwargs are appended to it
         show = False, for wanting to save only
         save_fig = False, save the figure object to metadata['_figure']
         save_png = False, save the figure as a png to metadata['_png']
@@ -54,6 +54,7 @@ def imshow(array,
         
         x_slice: (s1, s2) cut array to array[s1:s2]. s1 and s2 can be None and/or negative
         y_slice: (s1, s2) cut array to array[:,s1:s2]. s1 and s2 can be None and/or negative
+                 `int` is interpreted as (0, int)
         slice_by_val: bool, treat slicing tuple not as indexes but values.
                             Will slice at the index of the axis value closest to slice value.
                             (slice only for values on axis"1". axis2 will follow.)
@@ -65,14 +66,10 @@ def imshow(array,
         grid: bool = False
     
     # text:    
-        text='' text on graph
-        text_pos: str
-            position of text, two letter, up/down, left/right: ul ur dl dr
-        text_color: str
+        call _writeText(ax, text, text_pos, text_color)
         
     # plot kwargs:
-        cmap: str, 
-            some idea: viridis, PiYG, seismic, cividis, RdBu, Purples, Blues
+        cmap: str, mpl colormap. some idea: viridis, PiYG, seismic, cividis, RdBu, Purples, Blues
         random_cmap: False, use a random matplotlib cmap
         randomize_cmap: False, randomize the points of the cmap
     
@@ -91,7 +88,7 @@ def imshow(array,
         plot_kwargs['cmap'] = np.random.choice(plt.colormaps())
         print(f"cmap used: {plot_kwargs['cmap']}")
     if randomize_cmap:
-        plot_kwargs['cmap'] = _randomize_colormap(plot_kwargs['cmap'])
+        plot_kwargs['cmap'] = _randomizeColormap(plot_kwargs['cmap'])
 
     # save all kwargs:
     all_kwargs = locals() # !! no new vars before this line
@@ -113,10 +110,12 @@ def imshow(array,
 
     # slicing:
     if x_slice != (None, None):
+        if isinstance(x_slice, int): x_slice = (0, x_slice)
         x_axis, x_slice = _sliceAxis(x_axis, array.shape[1], x_slice, slice_by_val)
         x_axis2, x_slice = _sliceAxis(x_axis2, array.shape[1], x_slice)
         array = array[:, x_slice[0]:x_slice[1]]
     if y_slice != (None, None):
+        if isinstance(y_slice, int): y_slice = (0, y_slice)
         y_axis, y_slice = _sliceAxis(y_axis, array.shape[0], y_slice, slice_by_val)
         y_axis2, y_slice = _sliceAxis(y_axis2, array.shape[0], y_slice)
         array = array[y_slice[0]:y_slice[1]]
@@ -168,30 +167,22 @@ def imshow(array,
     if save:
         all_kwargs.pop('save')
         all_kwargs.pop('array')
+        all_kwargs.pop('show')
         metadata = all_kwargs.pop('metadata')
         metadata['imshow_kwargs'] = all_kwargs
-        if save_fig:
-            metadata['_figure'] = fig
-        if save_png:
-            png_buffer = io.BytesIO()
-            fig.savefig(png_buffer, format='png')
-            png_buffer.seek(0)
-            metadata['_png'] = png_buffer.getvalue()
-        text_on_graph = load.saveToNpz(path, filename, array, metadata=metadata)
-                
+        _saveDataAndFig(path, filename, array, fig, metadata, save_fig, save_png)
+        
     if text:
-        pos_dict = {'u': 0.95, 'r': 0.95, 'd':0.05, 'l':0.05 }
-        pos = (pos_dict[text_pos[1]], pos_dict[text_pos[0]])
-        va = {'u':'top', 'd':'bottom'}[text_pos[0]]
-        ha = {'r':'right', 'l':'left'}[text_pos[1]]
-        ax.text(*pos, f"{text}", color=text_color, fontsize=12,
-            ha=ha, va=va, transform=ax.transAxes)
+        _writeText(ax, text, text_pos=text_pos, text_color=text_color)
     
     fig.tight_layout()
+    if not show: 
+        plt.close(fig)
+        return
     #fig.show()
     #return fig
 
-def _randomize_colormap(cmap):
+def _randomizeColormap(cmap):
     if isinstance(cmap, str):
         cmap = plt.get_cmap(cmap) 
     colors = cmap(np.linspace(0, 1, 256))
@@ -203,7 +194,7 @@ def _prepAxis(axis):
         to axis = [start, stop]
     for int | float, the axis will be [0, value] or [value, 0]
     """
-    if axis == [None]: return axis
+    if axis is None: return [None]
     if isinstance(axis, (int, float)):
         axis = [0, axis] if axis > 0 else [axis, 0]
     return [axis[0], axis[-1]]
@@ -228,8 +219,28 @@ def _sliceAxis(axis, nbpts, slice_, slice_by_val=False):
 
     return [sliced_axis[0], sliced_axis[-1]], slice_
 
-
-
+def _writeText(ax, text, text_pos='dr', text_color='grey', text_size=12):
+    """ wrtie text on ax
+    text: str, text to write
+    text_pos: str, position of text, two letter, up/down, left/right: ul ur dl dr
+    """
+    pos_dict = {'u': 0.95, 'r': 0.95, 'd':0.05, 'l':0.05 }
+    pos = (pos_dict[text_pos[1]], pos_dict[text_pos[0]])
+    va = {'u':'top', 'd':'bottom'}[text_pos[0]]
+    ha = {'r':'right', 'l':'left'}[text_pos[1]]
+    ax.text(*pos, f"{text}", color=text_color, fontsize=text_size,
+        ha=ha, va=va, transform=ax.transAxes)
+    
+def _saveDataAndFig(path, filename, array, fig=None, metadata={}, save_fig=False, save_png=False):
+    if fig and save_fig:
+        metadata['_figure'] = fig
+    if fig and save_png:
+        png_buffer = io.BytesIO()
+        fig.savefig(png_buffer, format='png')
+        png_buffer.seek(0)
+        metadata['_png'] = png_buffer.getvalue()
+    load.saveToNpz(path, filename, array, metadata=metadata)
+                
 def showPng(binary):
     """ display a png inside a mpl figure.
     binary: dictionnary from an imshow saving with save=True, save_png=True
@@ -268,17 +279,30 @@ def imshowFromNpz(filename, return_dict=False, **kwargs):
     
     
 
-def qplot(x, y=None, x_label='', y_label='', title='', same_fig=False):
+def qplot(x, y=None, x_label='', y_label='', title='', same_fig=False,
+          legend=False,
+          
+          text='', text_pos='dr', text_color='grey',
+          
+          **plot_kwargs):
     """ quick 1d plot """
     if not same_fig:
         plt.figure()
+    ax = plt.gca()
+    
     if y is None:
-        plt.plot(x)
+        plt.plot(x, **plot_kwargs)
     else:
-        plt.plot(x, y)
+        plt.plot(x, y, **plot_kwargs)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.title(title)
+    
+    if legend: plt.legend()
+    if text: _writeText(ax, text, text_pos=text_pos, text_color=text_color)
+
+
+
 
 
 def plotColumns(array, interval, x_axis=None, y_axis=None, x_label='', y_label='', title='', 

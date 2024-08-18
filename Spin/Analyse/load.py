@@ -1,4 +1,5 @@
 import time as timemodule
+import os
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -34,13 +35,19 @@ def loadNpz(name):
             ret[key] = obj
     return ret
 
+def _makeDateFolder(path):
+    date = timemodule.strftime("%Y%m%d")
+    path += date
+    if not os.path.exists(path): os.mkdir(path)
+    return path + '/'
 
-def saveToNpz(path, filename, array, metadata={}):
+def saveToNpz(path, filename, array, metadata={}, make_date_folder=True):
     """ Save array to an npz file.
     metadata is a dictionnary, it can have pyHegel instruments as values: the iprint will be saved.
     """
     if not path.endswith(('/', '\\')):
         path += '/'
+    if make_date_folder: path = _makeDateFolder(path)
     timestamp = timemodule.strftime('%Y%m%d-%H%M%S-')
     if filename == '': timestamp = timestamp[:-1]
     fullname = path + timestamp + filename
@@ -61,14 +68,19 @@ def saveToNpz(path, filename, array, metadata={}):
 
 #### pyHegel files
 
-def readfileNdim(file):
+def readfileNdim(file, return_raw=False):
     """ a memo of pyHegel.readfile for sweep with N dimensions 
     for i in range(10):
         imshow(data[3][i].T, x_axis=data[2,1,0], y_axis=data[1,1][::,1], x_label='P2', y_label='P1', title=f"B1={round(data[0][i][0][0], 3)}")
+        
+    return a dictionnary: {'dev_1':data, 'dev_2':data, ....}
     """
     
     data, titles, headers = commands.readfile(file, getheaders=True, multi_sweep='force', multi_force_def=np.nan)
-    return data, titles, headers
+    if return_raw: return data, titles, headers
+    dictionnary = {key:val for key, val in zip(titles, data)}
+    dictionnary['_headers'] = headers
+    return dictionnary
 
 
 def _completeAxis(incomplete_axis):
@@ -139,16 +151,17 @@ def read2fileAndPlotDiff(file1, file2, filtre=lambda arr: arr):
 def getFirstAxisList(data3d):
     return [(i, round(image_i[0][0], 4)) for i, image_i in enumerate(data3d[0])]
 
-def showfile3dim(data, first_axis_label='', x_label='', y_label='', cbar=False,
+def showfile3dim(data, first_axis_label='{val}', x_label='', y_label='', cbar=False,
                  is_alternate=False, transpose=False, deinterlace=False,
-                 first_axis_ids=[]):
+                 first_axis_ids=[], **imshowkw_user):
     """ take the output of a readfile data for a 3d sweep, plot an image for each first axis values
     handles 'alternate' sweep.
     first_axis_ids is a list of ids instead of plotting for each first axis values.
     deinterlace: plot two figure per 2d sweep,
+    title: a string with '{val}' in it. {val} will be replaced by the ith value of the first axis
     """
-    first_axis_list = getFirstAxisList(data)
-        
+    first_axis_list = getFirstAxisList(data)  
+    
     iterator = range(len(data[0])) if len(first_axis_ids) == 0 else first_axis_ids
     for i in iterator:
         
@@ -166,14 +179,20 @@ def showfile3dim(data, first_axis_label='', x_label='', y_label='', cbar=False,
                          y_axis=y_axis if transpose else data[2,1,0], 
                          x_label=x_label if not transpose else y_label, 
                          y_label=y_label if not transpose else x_label,
-                         cbar=cbar)
+                         cbar=cbar,
+                         title=first_axis_label.format(val=first_axis_list[i][1]),
+                         **imshowkw_user)
 
         if deinterlace:
             img1 = img[0::2, :]
             img2 = img[1::2, :]
-            p.imshow(img1 if transpose else img1.T, title=f"{first_axis_label}={first_axis_list[i][1]}, paires", **imshow_kw)
-            p.imshow(img2 if transpose else img2.T, title=f"{first_axis_label}={first_axis_list[i][1]}, impaires", **imshow_kw)
+            base_title = imshow_kw['title']
+            imshow_kw['title'] = base_title + ', paire'
+            p.imshow(img1 if transpose else img1.T, **imshow_kw)
+            imshow_kw['title'] = base_title + ', impaire'
+            p.imshow(img2 if transpose else img2.T, **imshow_kw)
             continue
             
-        p.imshow(img if transpose else img.T, title=f"B1=0.35, B2={first_axis_list[i][1]}", **imshow_kw )
+        p.imshow(img if transpose else img.T, 
+                 **imshow_kw )
 

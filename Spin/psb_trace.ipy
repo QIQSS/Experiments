@@ -1,0 +1,258 @@
+# %% imports
+import numpy as np
+%cd "C:\Codes\Lab-Scripts\Spin"
+import Analyse.plot as plot
+import Analyse.load as load
+import Analyse.analyse as analyse
+
+from Analyse.plot import qplot, imshow
+from Analyse.analyse import fileIn, allequal
+
+from alive_progress import alive_it
+
+from pyHegel import fitting as fit
+from pyHegel.commands import wait
+
+import matplotlib.cm as cm
+
+# %% env
+log = "C:\Codes\Lab-Scripts\Spin\logs\\"
+hllog = "C:\Projets\IMEC_DD_reflect\QBB16_SD11b_3\\"
+%cd hllog
+
+# %% 20240819 T1 weekend
+#!!! temps load/empty différent -> change cut_id_start
+
+
+
+# %%% plot
+fig = plt.figure()
+ax = fig.add_subplot(111)
+sc = ax.scatter(p2_list, p1_list, c=t1_list, cmap='Purples', s=300)
+ax.grid(True)
+ax.set_xlabel('P1 read (V)')
+ax.set_ylabel('P2 read (V)')
+cbar = plt.colorbar(sc)
+cbar.set_label('T1 (s)')
+plt.show()
+# %% 20240816 T1 map 2, meme point.
+files = fileIn(log+'20240816', full_path=True)    
+files = [file for file in files if 'mesureT1_pm' in file]
+points = analyse.genTrapezoidSweep(0.551, 0.556, 6, 1.030, 1.044, 1.04, 1.05, 3)
+
+# %%% postprocess
+def pl(file=files[0]):
+    load_dict = load.loadNpz(file)
+    metadata, raw = load_dict.get('metadata'), load_dict.get('array')
+    if metadata.get('awg_overrange'): print('overrange')
+    
+    # take from metadata
+    p1, p2 = metadata.get('p1'), metadata.get('p2')
+    timelist_raw = np.linspace(0, metadata.get('imshow_kwargs').get('x_axis'), len(raw[0]))
+    
+    # cut
+    cut_id_start = analyse.findNearest(timelist_raw, 0.006, return_id=True) # remove beginning of the pulse
+    cut_id_stop = -4
+    arr = raw[:, cut_id_start:cut_id_stop]
+    timelist = timelist_raw[cut_id_start:cut_id_stop]
+    timelist = np.asarray(timelist)-timelist[0]
+    
+    # filter and stuff
+    filt = analyse.gaussianLineByLine(arr, 20)
+    th = analyse.findClassifyingThreshold(filt, show_plot=False)
+    clas = analyse.classify(filt, th, inverse=True)
+    #imshow(clas, title=f"Read: p1={p1}, p2={p2}")    
+
+    
+    stats_dict = analyse.classTraces(clas, timelist)
+    
+    counted_trace = stats_dict.get('low') + stats_dict.get('high')
+    if counted_trace != 0:
+        points = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
+        #qplot(timelist, stats)
+        fit_res = fit.fitplot(analyse.f_exp, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0])
+        #fit_res = fit.fitcurve(analyse.f_exp, timelist, stats, p0=[298.7e-6,295e-3,102.6e-6,0])
+        t1 = fit_res[0][0]
+    else:
+        t1 = 0
+    
+    wait(1)
+    return t1, p1, p2, points, timelist, fit_res
+
+# %%% compute
+p1_list, p2_list, t1_list, points_list= [], [], [], []
+fit_res_list = []
+timelist = None
+for f in alive_it(files):
+    t1, p1, p2, points, tl, fit_res = pl(f)
+    p1_list.append(p1)
+    p2_list.append(p2)
+    t1_list.append(t1)
+    points_list.append(points)
+    fit_res_list.append(fit_res)
+    timelist=  tl
+# %%% std, error
+params_list = np.asarray([fr[0] for fr in fit_res_list])
+p_avg = np.average(params_list, axis=0)
+p_std = np.std(params_list, axis=0)
+p_err = p_std/np.sqrt(len(params_list))
+# %%% plot
+
+plt.figure(figsize=(5,4))
+alphas = np.linspace(0.1, 0.9, len(points_list))
+colors = matplotlib.colormaps['Blues'](np.linspace(0, 1, len(points_list)))
+
+plt.rcParams.update({'text.usetex': True})
+import matplotlib as mpl
+mpl.rcParams.update(mpl.rcParamsDefault)
+#a*np.exp(-(x+b)/tau)+c
+lbl = r'$y=ae^{\frac{-(t+b)}{T_1}}+c$'
+tau, a, b, c = p_avg
+tau_err, a_err, b_err, c_err = p_err
+lbl = (r'$y = a e^{\frac{-(t+b)}{T_1}} + c$' +
+       f'\n$T_1= {tau:.4f} \pm {tau_err:.4f}$, '
+       f'\n$a = {a:.4f} \pm {a_err:.4f}$'
+       f'\n$b = {b:.4f} \pm {b_err:.4f}$'
+       f'\n$c = {c:.4f} \pm {c_err:.4f}$')
+
+plt.plot(timelist, analyse.f_exp(timelist, *p_avg), color='red', label=lbl)
+for points, alpha, c in zip(points_list, alphas, colors):
+    plt.plot(timelist, points, alpha=alpha, linewidth=0.5, color=c)
+
+plt.xlabel('time (s)')
+plt.ylabel('$P_{high}$')
+#plt.tick_params(axis='both', which='major', labelsize=12)
+#plt.legend(prop={'size': 50})
+plt.legend(prop = { "size": 60 }, loc ="upper right")  # Adjust the fontsize as needed
+
+plt.grid()
+plt.legend()
+plt.show()
+
+# %% 20240815 T1 map
+# !!!! certains points sont au-delà de la range de l'awg
+
+files = fileIn(log+'20240815', full_path=True)    
+files = [file for file in files if 'mesureT1' in file]
+
+p1_list= np.linspace(1.035, 1.05, 10)
+p2_list = np.linspace(0.550, 0.558, 10)
+
+# %%% postprocess pipeline
+def pl(file=files[1]):
+    load_dict = load.loadNpz(file)
+    metadata, raw = load_dict.get('metadata'), load_dict.get('array')
+    
+    p1, p2 = metadata.get('p1'), metadata.get('p2')
+    timelist = np.linspace(0, metadata.get('imshow_kwargs').get('x_axis'), len(raw[0]))
+    
+    cut_id_start = analyse.findNearest(timelist, 0.006, return_id=True) # remove beginning of the pulse
+    cut_id_stop = -200
+    arr = raw[:, cut_id_start:cut_id_stop]
+    timelist = timelist[cut_id_start:cut_id_stop]
+    timelist = np.asarray(timelist)-timelist[0]
+    
+    filt = analyse.gaussianLineByLine(arr, 20)
+    th = analyse.findClassifyingThreshold(filt, show_plot=False)
+    clas = analyse.classify(filt, th, inverse=True)
+    #imshow(clas, title=f"Read: p1={p1}, p2={p2}")    
+
+    
+    stats_dict = analyse.classTraces(clas, timelist)
+    
+    counted_trace = stats_dict.get('low') + stats_dict.get('high')
+    if counted_trace != 0:
+        stats = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
+        #qplot(timelist, stats)
+        fit_res = fit.fitplot(analyse.f_exp, timelist, stats, p0=[298.7e-6,295e-3,102.6e-6,0])
+        #fit_res = fit.fitcurve(analyse.f_exp, timelist, stats, p0=[298.7e-6,295e-3,102.6e-6,0])
+        t1 = fit_res[0][0]
+    else:
+        t1 = 0
+    
+    wait(.5)
+    return t1, p1, p2
+# %%% build t1 map
+t1_list = [] # list of tuple: [((p1,p2), t1), ]
+for f in alive_it(files):
+    t1, p1, p2 = pl(f)
+    t1_list.append(((p1, p2), t1))
+
+p1_values = [item[0][0] for item in t1_list]
+p2_values = [item[0][1] for item in t1_list]
+t1_values = [item[1] for item in t1_list]
+
+# %%% plot
+fig = plt.figure()
+ax = fig.add_subplot(111)
+sc = ax.scatter(p2_values, p1_values, c=t1_values, s=[v*100000 for v in t1_values], cmap='viridis')
+ax.grid(True)
+ax.set_xlabel('P1 read (V)')
+ax.set_ylabel('P2 read (V)')
+cbar = plt.colorbar(sc)
+cbar.set_label('T1')
+plt.show()
+
+# %% 20240814 T1
+# %%% load
+data = load.loadNpz('C:\Codes\Lab-Scripts/Spin/logs/20240815/20240815-171747-readout')
+raw = data.get('array')
+timelist = np.linspace(0, 0.051, len(raw[0]))
+# %%% exclude first points
+#print(data.get('metadata').get('pulseP1'))
+cut_at_time = 0.006 
+cut_id = analyse.findNearest(timelist, cut_at_time, return_id=True)
+arr = raw[:, cut_id:]
+timelist = timelist[cut_id:]
+timelist = np.asarray(timelist)-timelist[0]
+
+# %%% filter and stats
+filt = analyse.gaussianLineByLine(arr, 10)
+th = analyse.findClassifyingThreshold(filt, show_plot=False)
+clas = analyse.classify(filt, th, inverse=True)
+
+d = analyse.classTraces(clas, timelist)
+
+# %%% stats again
+counted_trace = d.get('low') + d.get('high')
+stats = [np.sum(np.where(np.asarray(d['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
+fitres = fit.fitplot(analyse.f_exp, timelist, stats, p0=[10e-3,1,0,0])
+
+# %%% plot
+plt.figure()
+plt.plot(timelist, analyse.f_exp(timelist, *fitres[0]), label='fit', color='red')
+plt.plot(timelist, stats) 
+
+# %% 20240814 T1 varying load time (mauvaise méthode)
+# %%% load
+path = log+'20240814'
+path2 = log+'20240815'
+files = fileIn(path, full_path=True) + fileIn(path2, full_path=True)
+extractTload = lambda metadata: float(metadata.get('pulseP1').split('duration')[3][1:].split(')')[0])
+def loadOne(file):
+    d = load.loadNpz(file)
+    return (extractTload(d.get('metadata')), d.get('array'))
+loads = [loadOne(file) for file in files]#.sort(key=lambda t: t[0]) # [(t_load, data), ...]
+acq_time = 0.007
+
+# %%% compute
+t_readout = 0.002
+
+def onepoint(arr, i):
+    print(i)
+    """ filter, find threshold, classify, count high/low """ 
+    arr = arr[:, :-5]
+    id_readout = analyse.findNearest(np.linspace(0, acq_time, loads[0][1].shape[1]), t_readout, return_id=True)
+
+    arr = analyse.gaussianLineByLine(arr, sigma=10)
+
+    th = analyse.findClassifyingThreshold(arr, show_plot=False)
+    arr_cls = analyse.classify(arr, th)
+    proba = analyse.countHighLow(arr_cls[:, id_readout])
+    return proba
+
+result = [(t_load, onepoint(arr, i).get('low')) for i, (t_load, arr) in enumerate(loads[:414])] # [(t_load, proba)]
+res = np.array(result[:408])
+qplot(res[:,0], res[:,1])
+
+# Pas la bonne mesure de T1 finalement.......

@@ -145,7 +145,7 @@ class VideoModeWindow(QMainWindow):
         self.btnYminus.clicked.connect(lambda: self.yShift(direction=-1))
         self.btnYplus.clicked.connect(lambda: self.yShift(direction=+1))
         self.spinYstep = ScientificSpinBox.PyScientificSpinBox()
-        self.spinYstep.setValue(0.001)
+        self.spinYstep.setValue(0.005)
         if (dim ==2 or self._wrap_mode) and fn_yshift is not None:
             self.commands.addWidget(self.btnYplus, 5, 0)
             self.commands.addWidget(self.spinYstep, 6, 0)
@@ -162,7 +162,7 @@ class VideoModeWindow(QMainWindow):
         self.btnXminus.clicked.connect(lambda: self.xShift(direction=-1))
         self.btnXplus.clicked.connect(lambda: self.xShift(direction=+1))
         self.spinXstep = ScientificSpinBox.PyScientificSpinBox()
-        self.spinXstep.setValue(0.001)
+        self.spinXstep.setValue(0.005)
         if fn_xshift is not None:
             self.right_layout.addWidget(self.btnXminus, 1, 0)
             self.right_layout.addWidget(self.spinXstep, 1, 1)
@@ -185,7 +185,7 @@ class VideoModeWindow(QMainWindow):
             
         if take_focus:
             while not self.vthread.pause:
-                wait(2)
+                wait(1)
             return
         
     def closeEvent(self, event):
