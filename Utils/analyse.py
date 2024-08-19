@@ -9,14 +9,6 @@ from pyHegel import fitting, fit_functions
 import numpy as np
 from matplotlib import pyplot as plt
 
-#### file
-def fileIn(path, full_path=False):
-    """ List all files in the directory.    """
-    # Get the list of files
-    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-    if full_path: return [os.path.join(path, f) for f in files]
-    else: return files
-
 #### array handling
 
 def alternate(arr, enable=True):

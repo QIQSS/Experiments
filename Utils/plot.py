@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.image as mplimg
 
 
-from . import load
+from . import files
 from . import analyse
 
 import matplotlib.colors as mcolors
@@ -154,14 +154,7 @@ def imshow(array, show=True,
         ax.grid()
 
     # modded fig
-    def figToClipboard():
-        with io.BytesIO() as buffer:
-             fig.savefig(buffer)
-             QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))
-    def onKeyPress(event):
-        if event.key == "ctrl+c":
-            figToClipboard()
-    fig.canvas.mpl_connect('key_press_event', onKeyPress)
+    fig = _modFig(fig)
 
     # saving
     if save:
@@ -239,15 +232,28 @@ def _saveDataAndFig(path, filename, array, fig=None, metadata={}, save_fig=False
         fig.savefig(png_buffer, format='png')
         png_buffer.seek(0)
         metadata['_png'] = png_buffer.getvalue()
-    load.saveToNpz(path, filename, array, metadata=metadata)
-                
+    files.saveToNpz(path, filename, array, metadata=metadata)
+
+def _modFig(fig):
+    """ mod and return the plt fig with custom stuff """
+    # ctrl+c to copy to clipboard
+    def figToClipboard():
+        with io.BytesIO() as buffer:
+            fig.savefig(buffer)
+            QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))
+    def onKeyPress(event):
+        if event.key == "ctrl+c":
+            figToClipboard()
+    fig.canvas.mpl_connect('key_press_event', onKeyPress)
+    return fig            
+    
 def showPng(binary):
     """ display a png inside a mpl figure.
     binary: dictionnary from an imshow saving with save=True, save_png=True
             or directly a png in binary
             or a path to an npz file"""
     if type(binary) == str:
-        npz = load.loadNpz(binary)
+        npz = files.loadNpz(binary)
         return showPng(npz)
     if type(binary) == dict:
         binary = binary.get('metadata',None).get('_png',None)
@@ -272,7 +278,7 @@ def imshowFromNpz(filename, return_dict=False, **kwargs):
     """ if the Npz was saved with imshow(array, save=True),
     it will load the file and call imshow with the right kwargs
     """
-    npzdict = load.loadNpz(filename)
+    npzdict = files.loadNpz(filename)
     imshowFromNpzDict(npzdict)
     if return_dict: return npzdict
  
