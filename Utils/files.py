@@ -14,7 +14,8 @@ from . import plot as p
 def fileIn(paths, full_path=True):
     """ List all files in the directory(/ies).    """
     files = []
-    
+    if not isinstance(paths, (list, tuple)):
+        paths = [paths]
     for path in paths:
         ls = os.listdir(path)
         ls_full = [os.path.join(path, f) for f in ls]

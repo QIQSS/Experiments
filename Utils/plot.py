@@ -14,6 +14,12 @@ from . import analyse
 
 import matplotlib.colors as mcolors
 
+COLORS = ['#029ac3', '#ffba1e', '#59a694', '#fe66ca', '#cd93f9']
+COLORS_D = ['#5b1d2c', '#c6e1ea', '#505c76', '#162067', '#070c20']
+
+
+#### BASIC PLOTS
+
 def imshow(array, show=True,
            save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
            
@@ -26,7 +32,8 @@ def imshow(array, show=True,
            grid=False,
            random_cmap=False, randomize_cmap=False,
            use_latex=False,
-           figsize=None,
+           return_fig=False,
+           figsize=None, ax=None,
            **plot_kwargs):
     """ my custom imshow function.
     with easier axis extent: x_axis=, y_axis=.
@@ -126,15 +133,24 @@ def imshow(array, show=True,
     
     
     # PLOT
-    if cbar:
-        fig, [ax, cax] = plt.subplots(1,2, gridspec_kw=dict(width_ratios=[25,1]), figsize=figsize)
+    if not ax:
+        if cbar:
+            fig, [ax, cax] = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[25, 1]), figsize=figsize)
+        else:
+            fig, ax = plt.subplots(figsize=figsize)
     else:
-        fig, ax = plt.subplots(figsize=figsize)
+        fig = ax.figure
+        if cbar:
+            cax = fig.add_axes([1.0, 0.12, 0.02, 0.8])
+        else:
+            cax = None
+        
     im = ax.imshow(array, **plot_kwargs)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title)
     #ax.autoscale(False)
+
 
     # secondary x/y -axis
     if len(x_axis2) > 1:
@@ -147,7 +163,7 @@ def imshow(array, show=True,
         axy2.set_ylabel(y_label2)
 
 
-    if cbar:
+    if cbar and cax:
         fig.colorbar(im, label=cbar_label, ax=ax, cax=cax)
         cax.set_title(cbar_title)
     if grid: 
@@ -173,7 +189,8 @@ def imshow(array, show=True,
         plt.close(fig)
         return
     #fig.show()
-    #return fig
+    if return_fig:
+        return fig
 
 def _randomizeColormap(cmap):
     if isinstance(cmap, str):
@@ -282,8 +299,6 @@ def imshowFromNpz(filename, return_dict=False, **kwargs):
     imshowFromNpzDict(npzdict)
     if return_dict: return npzdict
  
-    
-    
 
 def qplot(x, y=None, x_label='', y_label='', title='', same_fig=False,
           legend=False,
@@ -309,7 +324,7 @@ def qplot(x, y=None, x_label='', y_label='', title='', same_fig=False,
 
 
 
-
+#### SPECIAL CASE PLOTS
 
 def plotColumns(array, interval, x_axis=None, y_axis=None, x_label='', y_label='', title='', 
                 z_label='', reverse=False, cbar=False):
@@ -364,3 +379,39 @@ def plotColumns(array, interval, x_axis=None, y_axis=None, x_label='', y_label='
     #ax.legend()
 
     plt.show()
+
+    
+def imshowSideBySide(*imgs, **kwargs):
+    """ call imshow for imgs in a side by side figure.
+    cbar is not supported.
+    """
+    fig, axes = plt.subplots(1, len(imgs), figsize=(15, 5))
+    if len(imgs) == 1: axes = [axes]
+    for ax, img in zip(axes, imgs):
+        imshow(img, ax=ax, cbar=False, **kwargs)
+        #ax.set_title(title)
+        #ax.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+
+
+def plotDoubleGaussian(x, sigma1, sigma2, mu1, mu2, A1, A2, points=None,
+                       vline=None, title=''):
+    
+    fig, ax = plt.subplots()
+    gauss1 = analyse.f_gaussian(x, sigma1, mu1, A1)
+    gauss2 = analyse.f_gaussian(x, sigma2, mu2, A2)
+    c1, c2, c3, c4 = COLORS[0], COLORS[1], COLORS[3], COLORS[4]
+    ax.plot(x, gauss1, c1)
+    ax.fill_between(x, gauss1.min(), gauss1, facecolor=c1, alpha=0.5)
+    ax.plot(x, gauss2, c2)
+    ax.fill_between(x, gauss2.min(), gauss2, facecolor=c2, alpha=0.5)
+    if points is not None:
+        ax.plot(x, points, c3)
+    if vline:
+        ax.axvline(x=vline, color=c4, linestyle=':', label=str(vline))
+        fig.legend()
+    ax.set_title(title)
+    
+    

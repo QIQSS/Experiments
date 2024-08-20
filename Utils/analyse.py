@@ -5,6 +5,7 @@ from scipy import ndimage
 from scipy.fft import fftfreq, fftshift
 
 from pyHegel import fitting, fit_functions
+from scipy.optimize import curve_fit
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -53,6 +54,8 @@ def ctail(arr2d, x=10):
     """ extract the x last columns of 2d array """
     return arr2d[:, len(arr2d[0])-x:]
 
+def meandiff(a):
+    return np.mean(np.diff(a))
 
 #### filters
 
@@ -80,10 +83,18 @@ def findNearest(array, value, return_id=False):
     if return_id: return idx
     return array[idx]
 
-def histogram(arr, bins=100, get_bins=False, **kwargs):
+
+def rSquared(y_true, y_pred):
+    return np.sum((y_true - y_pred)**2)
+
+def histogram(arr, bins=100, 
+              get_x_axis=False, 
+              **kwargs):
+    arr = np.asarray(arr).flatten()
     hist, bin_list = np.histogram(arr, bins, **kwargs)
-    if get_bins:
-       return hist, bin_list
+    if get_x_axis:
+        x = (bin_list[:-1] + bin_list[1:]) / 2
+        return x, hist
     else:
         return hist
 
@@ -98,36 +109,6 @@ def histogramOnEachColumns(arr, bins=100, get_bins=False):
     if get_bins:
         return np.array(im).T, bin_list
     return np.array(im).T
-
-
-def findClassifyingThreshold(image, p0=[7, 10, 25, 62, 3.5, 3.5], bins=100, show_plot=True, verbose=False):
-    # 1 prepare data
-    samples = image.flatten()
-    hist, bins = np.histogram(samples, bins=bins, density=True)
-    x = np.linspace(0, len(hist)-1, len(hist))
-    
-    # 2 do the fit
-    fit_result = fitting.fitcurve(f_doubleGaussian, x, hist, p0)
-    fit_curve = f_doubleGaussian(x, *fit_result[0])
-
-    # 3 find threshold index and value
-    A1, A2 = fit_result[0][2], fit_result[0][3]
-    peak1, peak2 = int(min(A1, A2)), int(max(A1, A2))
-    if peak1 == peak2: peak2 += 2 # not good
-    threshold_ind = np.argmin(fit_curve[peak1:peak2]) # find the min between the two peaks
-    threshold_ind += peak1 # "recenter" the treshold
-    threshold_val = bins[threshold_ind]
-    
-    # 4 show print return
-    if show_plot:
-        plt.figure()
-        plt.plot(bins[:len(hist)], hist)
-        plt.plot(bins[:len(fit_curve)], fit_curve)
-        plt.axvline(x=threshold_val, color='r', linestyle=':', label='threshold: '+str(threshold_val))
-        plt.legend()
-    if verbose:
-        print('Threshold found at x='+str(threshold_val))
-    return threshold_val
 
 def classify(image, threshold, inverse=False):
     """ return the image with values 0 for below TH and 1 for above TH
@@ -186,7 +167,17 @@ def classTraces(arr2d, timelist):
             continue
     return d
 
+def findClassifyingThreshold(double_gaussian_parameters):
+    """ estimate the treshold for classifying a double gaussian.
+    use the results from fitDoubleGaussian """
+    sigma1, sigma2, mu1, mu2, A1, A2 = double_gaussian_parameters
+    midpoint_threshold = (mu1 + mu2) / 2
+    return midpoint_threshold
+
 #### fit functions
+def f_gaussian(x, sigma, mu, A):
+    return fit_functions.gaussian(x, sigma, mu, A)
+
 def f_doubleGaussian(x, sigma1, sigma2, mu1=0., mu2=0., A1=3.5, A2=3.5):
     """ use for fitting state repartition
     sigma: curvature =1:sharp, =15:very flatten
@@ -197,9 +188,92 @@ def f_doubleGaussian(x, sigma1, sigma2, mu1=0., mu2=0., A1=3.5, A2=3.5):
     g2 = fit_functions.gaussian(x, sigma2, mu2, A2)
     return g1+g2
 
-def f_exp(x, tau, a=1., b=0., c=0.):
+def f_expDecay(x, tau, a=1., b=0., c=0.):
     return a*np.exp(-(x+b)/tau)+c
 
+def ajustementDeCourbe(function, x, y, p0=[], threshold=0, 
+                       verbose=False, show_plot=False,
+                       inspect=False):
+    """ do a fit, optimize: y = function(x, *p0)
+    can give a list of p0 to try them all. it will take the best one.
+    
+    inspect: bool, will not do the fit, just plot the p0. (p0[0] if it's a p0_list)
+    """
+    error = False
+    best_params = None
+    best_error = float('inf')
+    
+    p0_list = []
+    if len(p0) == 0:
+        print('give a p0.')
+    elif isinstance(p0[0], (list, tuple)):
+        p0_list = p0
+    else:
+        p0_list = [p0]
+        
+    for i, p0 in enumerate(p0_list):
+        if inspect:
+            show_plot = True
+            best_params = p0
+            break
+        
+        try:
+            print(best_params)
+            params, _  = curve_fit(function, x, y, p0=p0)
+            y_pred = function(x, *params)
+            error = rSquared(y, y_pred)
+
+            if verbose:
+                print(f"Iteration {i}: Parameters = {params}, Error = {error}")
+            
+            if error < best_error:
+                best_params = params
+                best_error = error
+            
+            if error < threshold:
+                if verbose:
+                    print(f"Error below threshold ({threshold}). Done.")
+                break
+            
+        except Exception as e:
+            if verbose: print(f"Error with p0={p0}: {e}")
+            continue
+
+    if show_plot and best_params is not None:
+        plt.plot(x, function(x, *best_params), color='red', lw=3, label='Fit')
+        plt.plot(x, y, color='blue', marker='o', linestyle='None', label='Data')
+        
+        # extract parameters names
+        import inspect
+        sig = inspect.signature(function)
+        param_names = list(sig.parameters.keys())[1:]  # skip the first parameter (x)
+
+        param_text = ', '.join(f'{name}={value:.3f}' for name, value in zip(param_names, best_params))
+        # TODO: pipe this to custom qplot
+        # TODO: custom qplot...
+        plt.text(0.05, 0.95, f'Fit parameters:\n{param_text}', 
+                 transform=plt.gca().transAxes, fontsize=12, verticalalignment='top',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        plt.legend()
+        plt.show()
+        
+    return best_params
+    
+def fitDoubleGaussian(points, x, p0=None, p0_list=[], **kwargs):
+    delta = meandiff(x)
+    p0_list = p0_list[:]
+    p0_list += [
+        [10, 10, x[0], x[-1], np.max(points),  np.max(points) / 2, 1000],
+        [10, 10, np.mean(x)+10*delta, np.mean(x)-10*delta, np.max(points),  np.max(points) / 2, 1000],
+        [1, 1, x[20], x[-20], np.max(points),  np.max(points), 1000],
+        [1, 1.1, x[20], x[-20], np.max(points),  np.max(points)/4, 1000],
+    ]
+    if p0 is not None: p0_list = [p0]
+    
+    params = ajustementDeCourbe(f_doubleGaussian, x, points, p0_list, **kwargs)
+
+    return params
 
 #### mesures
 
