@@ -10,6 +10,21 @@ from pyHegel.instruments_base import BaseInstrument
 from . import analyse as a
 from . import plot as p
 
+#### file
+def fileIn(paths, full_path=True):
+    """ List all files in the directory(/ies).    """
+    files = []
+    if not isinstance(paths, (list, tuple)):
+        paths = [paths]
+    for path in paths:
+        ls = os.listdir(path)
+        ls_full = [os.path.join(path, f) for f in ls]
+        files_in_p = [f_or_d for f_or_d in ls_full if os.path.isfile(f_or_d)]
+        if full_path:
+            files_in_p = [os.path.join(path, f) for f in files_in_p]
+        files += files_in_p
+    return files
+
 
 #### FILE SAVING/LOADING
 

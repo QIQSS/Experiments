@@ -1,0 +1,12 @@
+[Connection]
+Host=dupontlab4.physique.usherbrooke.ca
+#Port=5900
+#Password=
+#Fullscreen=0
+Width=800
+Height=600
+#ViewOnly=0
+Scaling=1
+KeepRatio=1
+#DepthProfile=0
+#LossyEncoding=0
