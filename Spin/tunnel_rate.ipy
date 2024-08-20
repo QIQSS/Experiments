@@ -1,0 +1,216 @@
+# %% init
+LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
+LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
+
+get_ipython().run_line_magic('cd', '$LAB_SCRIPT_PATH/')
+LOG_PATH = LAB_SCRIPT_PATH + "/Logs"
+
+import numpy as np
+from alive_progress import alive_bar, alive_it
+from pyHegel import instruments
+from pyHegel.commands import wait
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import instruments as ui
+
+from Pulses.Builder import Pulse, genPWLFile
+from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
+
+# %% setup
+
+awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
+gain = awg.gain = 1/(0.02512)*0.4
+awg_sr = 40e4
+channel = {'P1':1, 'P2':2}
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
+awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
+awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
+awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
+awg.write('SOURce2:DAC:RESolution 15')
+awg.write('SOURce3:DAC:RESolution 15')
+# debug: awg.clear()
+
+ats = instruments.ATSBoard(systemId=1, cardId=1)
+ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
+ats.active_channels.set(['A','B'])
+ats.sample_rate.set(1000000)
+ats.trigger_level_1.set(1000)
+ats.ConfigureBoard()
+ats.nbwindows.set(1)
+ats.trigger_delay.set(0)
+def acquire(acq_time):
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(acq_time)
+    data = ats.fetch.get()[2]
+    return data
+
+bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
+ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
+
+#zi = instruments.zurich_UHF("dev2949")
+#zi_get = lambda: commands.get((zi.readval, {'vals': ['r'], 'ch': 0}))[0]
+
+rhP1 = bi3 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
+rhP2 = bi1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
+def shiftP1(val): rhP1.ramp.set(rhP1.get()+val)
+def shiftP2(val): rhP2.ramp.set(rhP2.get()+val)
+set_function = {'P1': rhP1.ramp.set, 'P2': rhP2.ramp.set}
+shift_function = {'P1': shiftP1, 'P2': shiftP2}
+
+# %% Pulse two step on one gate
+p1_0, p2_0 = 1.025, 0.548
+
+step_on, constant_on = 'P2', 'P1'
+val1, val2 = 0, 0.002
+time1, time2 = 0.005, 0.005
+
+#####
+pulseStep = Pulse(name='step', shape_comp=True)
+pulseStep.add(time1, val1, mark=True)
+pulseStep.add(time2, val2, mark=True)
+pulseStep.add(time1, val1, mark=True)
+# pulseStep.plot(pulseStep, wide=True, no_shape_comp=False)
+
+pulseZero = pulseStep.genMarksOnly(name='constant')
+
+# send to awg
+send(pulseStep, ch=channel[step_on])  # channel 1 (2) on P1 (P2)
+send(pulseZero, ch=channel[constant_on])
+send(pulseStep, ch=3, run_after=True)
+#genPWLFile(pulseStep, awg_sr, 'psb_pulse.txt')
+
+acq_time = pulseStep.getMarkDuration(awg_sr)
+ats.acquisition_length_sec.set(acq_time)
+#ats.sample_rate.set(100000)
+set_function['P1'](p1_0)
+set_function['P2'](p2_0)
+
+wait(1)
+pts = [acquire(acq_time) for _ in alive_it(range(800), spinner=None)]
+#vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, xlabel='time (s)',
+#                     axes_dict={'x': acq_time})
+
+# %% save
+filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n', pts, metadata=dict(pulse=str(pulseStep), p1=rhP1, p2=rhP2, t_acq=acq_time))
+
+# %% fit 1
+
+d = uf.loadNpz('C:\\Codes\\Lab-Scripts/Logs/20240820/20240820-143521-1000traces_TC=100n.npz')
+arr = d.get('array')
+y = np.mean(arr, axis=0)
+x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+
+xx=x[5018:5300]
+yy=y[5018:5300]
+
+from pyHegel import fitting as fit
+
+f = ua.f_expDecay
+
+fit.fitplot(f,xx,yy,p0=[18e-6,-2,-0.005,-48],noadjust=[])
+
+# %% fit 2
+
+d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-150621-1000traces_TC=50n')
+arr = d.get('array')
+y = np.mean(arr, axis=0)
+x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+
+xx=x[5018:5300]
+yy=y[5018:5300]
+
+from pyHegel import fitting as fit
+
+f = ua.f_expDecay
+
+fit.fitplot(f,xx,yy,p0=[12.1e-6,-2,-0.005,-48],noadjust=[]) 
+
+# %% fit 3
+
+d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-152431-1000traces_TC=500n')
+arr = d.get('array')
+y = np.mean(arr, axis=0)
+x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+
+xx=x[5018:5300]
+yy=y[5018:5300]
+
+from pyHegel import fitting as fit
+
+f = ua.f_expDecay
+
+fit.fitplot(f,xx,yy,p0=[59.2e-6,-2,-0.005,-48],noadjust=[]) 
+
+
+# %% Pulse two step on two gates
+p1_0, p2_0 = 1.045, 0.545
+dp1, dp2 = 0.02, 0.0
+
+time1, time2 = 0.005, 0.005
+
+#####
+pulseP1 = Pulse(name='P1', shape_comp=True)
+pulseP1.add(time1, 0, mark=True)
+pulseP1.add(time2, dp1, mark=True)
+#pulseP1.add(time1, 0, mark=True)
+# pulseP1.plot(pulseP2, wide=True, no_shape_comp=False)
+pulseP2 = Pulse(name='P2', shape_comp=True)
+pulseP2.add(time1, 0, mark=True)
+pulseP2.add(time2, dp2, mark=True)
+#pulseP2.add(time1, 0, mark=True)
+
+# send to awg
+send(pulseP1, ch=1)  # channel 1 (2) on P1 (P2)
+send(pulseP2, ch=2)
+send(pulseP1, ch=3, run_after=True)
+#genPWLFile(pulseStep, awg_sr, 'psb_pulse.txt')
+
+acq_time = pulseP1.getMarkDuration(awg_sr)
+ats.acquisition_length_sec.set(acq_time)
+#ats.sample_rate.set(100000)
+set_function['P1'](p1_0)
+set_function['P2'](p2_0)
+
+wait(1)
+pts = [acquire(acq_time) for _ in alive_it(range(800), spinner=None)]
+#vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, xlabel='time (s)',
+#                     axes_dict={'x': acq_time})
+
+# %% save
+filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n', pts, metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2), p1=rhP1, p2=rhP2, t_acq=acq_time))
+
+
+# %% fit
+
+d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-155447-800traces_TC=1u')
+arr = d.get('array')
+y = np.mean(arr, axis=0)
+x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+
+xx=x[5000:5300]
+yy=y[5000:5300]
+
+from pyHegel import fitting as fit
+
+f = ua.f_expDecay
+
+fit.fitplot(f,xx,yy,p0=[0.56e-6,1,-0.005,-46],noadjust=[]) 
+
+# %% fit 
+d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-160336-800traces_TC=500n')
+arr = d.get('array')
+y = np.mean(arr, axis=0)
+x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+
+xx=x[5000:5300]
+yy=y[5000:5300]
+
+from pyHegel import fitting as fit
+
+f = ua.f_expDecay
+
+fit.fitplot(f,xx,yy,p0=[0.56e-6,1,-0.005,-46],noadjust=[]) 
