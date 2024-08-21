@@ -57,6 +57,10 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         plt.title(wv_name)
 
 
+    if amp > 0.750:
+        print(f"Warning: need a volt amplitude with gain above 750mV: {amp}V")
+        return True
+
 
 #ats = instruments.ATSBoard(systemId=1, cardId=1)
 #ats_conf = dict(sample_rate=10e5,

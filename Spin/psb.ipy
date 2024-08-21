@@ -205,10 +205,10 @@ imshow(traces, save=True, path=LOG_PATH,
 
 # %% PSB pulse change read position
 
-points = analyse.genTrapezoidSweep(0.550, 0.557, 22, 
+points = ua.genTrapezoidSweep(0.550, 0.557, 22, 
                                        1.03, 1.044, 
                                        1.04, 1.054, 11)
-#plt.scatter(np.asarray(points)[:,0], np.asarray(points)[:,1], c=[i for i in range(len(points))])
+plt.scatter(np.asarray(points)[:,0], np.asarray(points)[:,1], c=[i for i in range(len(points))])
 
 #points
 vp1, vp2 =  1.035, 0.551
@@ -288,18 +288,35 @@ vm = VideoModeWindow(fn_get=vmget, dim=1,
 nb_trace = 2000
 p1_0, p2_0 = 1.0400, 0.554
 
-points = analyse.genTrapezoidSweep(0.550, 0.557, 28, 
+points = ua.genTrapezoidSweep(0.550, 0.557, 22, 
                                        1.03, 1.044, 
-                                       1.04, 1.054, 15)
-#plt.scatter(np.asarray(points)[:,0], np.asarray(points)[:,1], c=[i for i in range(len(points))])
+                                       1.04, 1.054, 11)
+pointsz1 = ua.genTrapezoidSweep(0.550, 0.5515, 11, 
+                                   1.03, 1.0375, 
+                                   1.0325, 1.04, 18)
+delta = np.asarray((0.55, 1.03)) - np.asarray((0.55015, 1.03025))
+delta = np.abs(delta)
+pointsz2 = [(0.55-delta[0], y) for y in np.linspace(1.03-delta[1], 1.0375-delta[1])]
+pointsz3 = ua.genTrapezoidSweep(0.550-12*delta[0], 0.5515-12*delta[0], 11, 
+                                   1.03-delta[1], 1.0375-delta[1], 
+                                   1.0325-delta[1], 1.04-delta[1], 18)
+
+all_points = points + pointsz1 + pointsz2 + pointsz3
+plt.scatter(np.asarray(all_points)[:,0], np.asarray(all_points)[:,1], c=[i for i in range(len(all_points))])
+
+
+points = analyse.genTrapezoidSweep(0.550-delta[0], 0.550, 2, 
+                                   1.03-delta[1], 1.0375-delta[1], 
+                                   1.0325-delta[1], 1.04-delta[1], 18)
+plt.scatter(np.asarray(points)[:,0], np.asarray(points)[:,1], c=[i for i in range(len(points))])
 
 for i, (p2, p1) in alive_it(enumerate(points), spinner=None, total=len(points)):
     #if i < 275: continue # !!!! reprise 1
-    if i < 299: continue # !!!! reprise 2
+    #if i < 299: continue # !!!! reprise 2
     
     # read center
     R = (0    , -0.000)
-    L = (-.010, 0 )
+    L = (-.015, 0 )
     E = (-.010 , -.005)
     
     tR, tL, tE = 0.05, 0.0005, 0.0008
