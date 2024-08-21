@@ -9,8 +9,8 @@ import numpy as np
 import matplotlib.image as mplimg
 
 
-from . import files
-from . import analyse
+from . import files as uf
+from . import analyse as ua
 
 import matplotlib.colors as mcolors
 
@@ -133,6 +133,7 @@ def imshow(array, show=True,
     
     
     # PLOT
+    # TODO: better handling of given ax
     if not ax:
         if cbar:
             fig, [ax, cax] = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[25, 1]), figsize=figsize)
@@ -223,7 +224,7 @@ def _sliceAxis(axis, nbpts, slice_, slice_by_val=False):
         full_axis = np.linspace(axis[0], axis[-1], nbpts)
         
     if slice_by_val:
-        slice_ = [analyse.findNearest(full_axis, sli, True) if sli is not None else None for sli in slice_]
+        slice_ = [ua.findNearest(full_axis, sli, True) if sli is not None else None for sli in slice_]
         slice_[1] = slice_[1]+1 if slice_[1] is not None else None
     sliced_axis = full_axis[slice_[0]:slice_[1]]
 
@@ -249,7 +250,7 @@ def _saveDataAndFig(path, filename, array, fig=None, metadata={}, save_fig=False
         fig.savefig(png_buffer, format='png')
         png_buffer.seek(0)
         metadata['_png'] = png_buffer.getvalue()
-    files.saveToNpz(path, filename, array, metadata=metadata)
+    uf.saveToNpz(path, filename, array, metadata=metadata)
 
 def _modFig(fig):
     """ mod and return the plt fig with custom stuff """
@@ -270,7 +271,7 @@ def showPng(binary):
             or directly a png in binary
             or a path to an npz file"""
     if type(binary) == str:
-        npz = files.loadNpz(binary)
+        npz = uf.loadNpz(binary)
         return showPng(npz)
     if type(binary) == dict:
         binary = binary.get('metadata',None).get('_png',None)
@@ -295,33 +296,126 @@ def imshowFromNpz(filename, return_dict=False, **kwargs):
     """ if the Npz was saved with imshow(array, save=True),
     it will load the file and call imshow with the right kwargs
     """
-    npzdict = files.loadNpz(filename)
+    npzdict = uf.loadNpz(filename)
     imshowFromNpzDict(npzdict)
     if return_dict: return npzdict
- 
 
-def qplot(x, y=None, x_label='', y_label='', title='', same_fig=False,
-          legend=False,
+
+#---- 1D
+def qplot(array, show=True,
+          save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
           
-          text='', text_pos='dr', text_color='grey',
+          x_axis=None, x_label='', y_label='',
+          x_slice=(None, None), slice_by_val=False,
           
+          title='', text='', text_pos='dr', text_color='grey',
+          grid=False,
+          log_y=False, log_x=False,
+          
+          use_latex=False,
+          return_fig=False,
+          figsize=None, ax=None,
           **plot_kwargs):
-    """ quick 1d plot """
-    if not same_fig:
-        plt.figure()
-    ax = plt.gca()
-    
-    if y is None:
-        plt.plot(x, **plot_kwargs)
-    else:
-        plt.plot(x, y, **plot_kwargs)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.title(title)
-    
-    if legend: plt.legend()
-    if text: _writeText(ax, text, text_pos=text_pos, text_color=text_color)
+    """ Custom 1D plot function for quick plotting.
+    # saving:
+        save = False
+        path = './'
+        filename = f"YYYMMDD-HHMMSS-{}"
+        metadata = {} # any dict, + this function kwargs are appended to it
+        show = False, for wanting to save only
+        save_fig = False, save the figure object to metadata['_figure']
+        save_png = False, save the figure as a png to metadata['_png']
 
+    # axes:
+        x_axis: list, will be from min to max.
+                int, will be from 0 to value or value to 0 if value is negative
+                None, will go from 0 to len(array)
+        x_label: ''
+        y_label: ''
+        
+        x_slice: (s1, s2) cut array to array[s1:s2]. s1 and s2 can be None and/or negative
+        slice_by_val: bool, treat slicing tuple not as indexes but values.
+                            Will slice at the index of the axis value closest to slice value.
+    
+        title: ''
+        grid: bool = False
+    
+    # text:    
+        call _writeText(ax, text, text_pos, text_color)
+        
+    # plot kwargs:
+        color: str, line color
+        linestyle: str, line style (e.g., '-', '--', '-.', ':')
+        marker: str, marker style (e.g., 'o', '^', 's')
+    
+    # other
+        use_latex = False
+    """
+    # Ensure array is a numpy array
+    array = np.asarray(array)
+    
+    # save all kwargs:
+    all_kwargs = locals() # !! no new vars before this line
+    
+    # latex
+    plt.rcParams.update({'text.usetex': use_latex})
+    
+    # AXES:
+    if x_axis is None:
+        x_axis = np.arange(len(array))
+    elif isinstance(x_axis, (int, float)):
+        x_axis = np.linspace(0, x_axis, len(array))
+    elif len(x_axis) != len(array):
+        x_axis = np.linspace(x_axis[0], x_axis[-1], len(array))
+    else:
+        x_axis = np.asarray(x_axis)
+    
+    if x_slice != (None, None):
+        if isinstance(x_slice, int): x_slice = (0, x_slice)
+        if slice_by_val:
+            x_slice = (np.searchsorted(x_axis, x_slice[0]), np.searchsorted(x_axis, x_slice[1]))
+        array = array[x_slice[0]:x_slice[1]]
+        x_axis = x_axis[x_slice[0]:x_slice[1]]
+    
+    # PLOT
+    if not ax:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+    
+    ax.plot(x_axis, array, **plot_kwargs)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    
+    if grid: 
+        ax.grid()
+    if log_y:
+        ax.set_yscale('log')
+    if log_x:
+        ax.set_xscale('log')
+        
+    # modded fig
+    fig = _modFig(fig)
+    
+    # saving
+    if save:
+        all_kwargs.pop('save')
+        all_kwargs.pop('array')
+        all_kwargs.pop('show')
+        metadata = all_kwargs.pop('metadata')
+        metadata['qplot_kwargs'] = all_kwargs
+        _saveDataAndFig(path, filename, array, fig, metadata, save_fig, save_png)
+    
+    if text:
+        _writeText(ax, text, text_pos=text_pos, text_color=text_color)
+    
+    fig.tight_layout()
+    if not show: 
+        plt.close(fig)
+        return
+    if return_fig:
+        return fig
 
 
 #### SPECIAL CASE PLOTS
@@ -400,8 +494,8 @@ def plotDoubleGaussian(x, sigma1, sigma2, mu1, mu2, A1, A2, points=None,
                        vline=None, title=''):
     
     fig, ax = plt.subplots()
-    gauss1 = analyse.f_gaussian(x, sigma1, mu1, A1)
-    gauss2 = analyse.f_gaussian(x, sigma2, mu2, A2)
+    gauss1 = ua.f_gaussian(x, sigma1, mu1, A1)
+    gauss2 = ua.f_gaussian(x, sigma2, mu2, A2)
     c1, c2, c3, c4 = COLORS[0], COLORS[1], COLORS[3], COLORS[4]
     ax.plot(x, gauss1, c1)
     ax.fill_between(x, gauss1.min(), gauss1, facecolor=c1, alpha=0.5)
@@ -415,3 +509,44 @@ def plotDoubleGaussian(x, sigma1, sigma2, mu1, mu2, A1, A2, points=None,
     ax.set_title(title)
     
     
+def plotSideBySide(*args, inline=False, link_all_axis=False):
+    """ plot arrays in args side by side.
+    can take 1d or 2d arrays
+    """
+    import pyqtgraph as pg
+    w = pg.GraphicsLayoutWidget()
+    plots = []
+    print(len(args))
+    for i, arr in enumerate(args):
+        if np.asarray(arr).ndim == 2:
+            p = w.addPlot(row=0, col=i)
+            img = pg.ImageItem(image=arr.T)
+            p.addItem(img)
+        elif np.asarray(arr).ndim == 1:
+            p = w.addPlot(row=0, col=i)
+            p.plot(arr)
+        else:
+            raise ValueError(f"Array at index {i} is not 1D or 2D")
+
+        plots.append(p)
+
+    if link_all_axis:
+        first_plot = plots[0]
+        for p in plots:
+            if p != first_plot:
+                p.setXLink(first_plot)
+                p.setYLink(first_plot)
+
+    if inline:         
+        from IPython.display import display, Image
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+            temp_filename = temp_file.name
+        exporter = pg.exporters.ImageExporter(w.scene())
+        exporter.export(temp_filename)
+        display(Image(filename=temp_filename))
+        os.remove(temp_filename)
+    else:
+         w.show()
+    return w
