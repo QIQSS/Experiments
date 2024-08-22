@@ -428,13 +428,14 @@ def scatter(tuplelist):
     c = [i for i in range(len(tuplelist))]
     plt.scatter(x, y, c=c, cmap='inferno', s=150)
 
-def scatterOverImg(sc_x, sc_y, sc_pts, im_x, im_y, im_pts):
+def scatterOverImg(sc_x, sc_y, sc_pts, im_x, im_y, im_pts,
+                   sc_cbar_label=''):
     fig, ax = plt.subplots()
     img = imshow(im_pts, ax=ax, x_axis=im_x, y_axis=im_y,
                  return_fig=True, cbar=False)
     sc = ax.scatter(sc_x, sc_y, c=sc_pts, cmap='plasma', edgecolor='black', s=100, alpha=0.6)
     cbar_sc = plt.colorbar(sc, ax=ax)
-    cbar_sc.set_label('T1 (s)')
+    cbar_sc.set_label(sc_cbar_label)
     plt.show()
 
 
