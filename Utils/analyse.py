@@ -277,6 +277,11 @@ def fitDoubleGaussian(points, x, p0=None, p0_list=[], **kwargs):
 
 #### mesures
 
+def gen2dTraceSweep(x_start, x_stop, y_start, y_stop, nbpts):
+    x_list = np.linspace(x_start, x_stop, nbpts)
+    y_list = np.linspace(y_start, y_stop, nbpts)
+    return [(x, y) for x, y in zip(x_list, y_list)]
+
 def genTrapezoidSweep(x_start, x_stop, x_nb, y_start0, y_stop0, y_startn, y_stopn, y_nb):
     """ return a list of tuple """
     result = []    

@@ -2,23 +2,31 @@
 LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
 LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
 
-get_ipython().run_line_magic('cd', '$LAB_SCRIPT_PATH/Spin/')
+%cd $LAB_SCRIPT_PATH
 LOG_PATH = LAB_SCRIPT_PATH + "/Spin/logs"
 
+from pyHegel import instruments
+from pyHegel.commands import wait
+
 import numpy as np
-from MyUtils import *
-from Analyse.analyse import *
-from Analyse.plot import *
-from Pulses.Builder import *
-from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 from alive_progress import alive_bar, alive_it
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import instruments as ui
+
+from Utils.plot import imshow
+from Pulses.Builder import Pulse, genPWLFile
+
+from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 # %% setup
 
 awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
 awg_sr = 40e4
 channel = {'P1':1, 'P2':2}
-send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
 awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
 awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
 awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
@@ -71,8 +79,8 @@ ramp_direction = 'up' # 'up' | 'down'
 listStep = np.linspace(valueStep-deltaStep, valueStep+deltaStep, nbStep)
 pulseRamp = Pulse(name='ramp', shape_comp=True)
 pulseRamp.add(timeRamp/2)
-pulseRamp.add(timeRamp, waveform=Ramp({'up': -1, 'down': +1}[ramp_direction]*deltaRamp,
-                                      {'up': +1, 'down': -1}[ramp_direction]*deltaRamp), mark=True,)
+pulseRamp.addRamp(timeRamp, {'up': -1, 'down': +1}[ramp_direction]*deltaRamp,
+                  {'up': +1, 'down': -1}[ramp_direction]*deltaRamp, mark=True)
 pulseRamp.add(sync_time_after_ramp)
 
 pulseStep = pulseRamp.genMarksOnly(name='step')
@@ -99,7 +107,7 @@ def vmget():
     data = acquire(timeRamp)
     if ramp_direction == 'down':
         data = np.flip(data)
-    data = gaussian(data, 2)
+    data = ua.gaussian(data, 2)
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_direction}", xsweep=sweep,
@@ -107,6 +115,10 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_directio
                          'y': [valueRamp-deltaRamp, valueRamp+deltaRamp]},
                      fn_yshift=shift_function[ramp_on])
 
+# %% save
+img = vm.data_buffer[0].T
+up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
+          title='B=100mT', filename='transition_B=100mT', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH)
 
 # %% PSB pulse
 ##### settings
@@ -139,14 +151,14 @@ pulseP1.add(tw)
 pulseP1.add(tL, offset=L[0], mark=acq_on=='full')
 pulseP1.add(tE, offset=E[0], mark=acq_on=='full')
 pulseP1.add(tL, offset=L[0], mark={'full':True, 'read':(0.9, 1)}[acq_on])
-pulseP1.add(tR, offset=R[0], waveform=Ramp(-read_delta['P1'], +read_delta['P1']), mark=(0, 0.9))
+pulseP1.addRamp(tR, -read_delta['P1'], +read_delta['P1'], offset=R[0], mark=(0, 0.9))
 
 pulseP2 = Pulse(name='P2', shape_comp=True)
 pulseP2.add(tw)
 pulseP2.add(tL, offset=L[1], mark=acq_on=='full')
 pulseP2.add(tE, offset=E[1], mark=acq_on=='full')
 pulseP2.add(tL, offset=L[1], mark={'full':True, 'read':(0.9, 1)}[acq_on])
-pulseP2.add(tR, offset=R[1], waveform=Ramp(-read_delta['P2'], +read_delta['P2']), mark=(0, 0.9))
+pulseP2.addRamp(tR, -read_delta['P2'], +read_delta['P2'], offset=R[1], mark=(0, 0.9))
 
 #compensateAndEqualizeTime(pulseP1, pulseP2, 0.01)
 
@@ -170,7 +182,7 @@ sweep = SweepAxis(np.linspace(read_level[to_sweep]-sweep_delta, read_level[to_sw
 def vmget():
     sweep.next()
     data = acquire(acq_time)
-    data = gaussian(data, 2) if filt else data
+    data = ua.gaussian(data, 2) if filt else data
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1,
@@ -273,7 +285,7 @@ sweep = SweepAxis(np.linspace(read_level[to_sweep]-sweep_delta, read_level[to_sw
 def vmget():
     sweep.next()
     data = acquire(acq_time)
-    data = gaussian(data, 2) if filt else data
+    data = ua.gaussian(data, 2) if filt else data
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1,
@@ -296,21 +308,38 @@ pointsz1 = ua.genTrapezoidSweep(0.550, 0.5515, 11,
                                    1.0325, 1.04, 18)
 delta = np.asarray((0.55, 1.03)) - np.asarray((0.55015, 1.03025))
 delta = np.abs(delta)
-pointsz2 = [(0.55-delta[0], y) for y in np.linspace(1.03-delta[1], 1.0375-delta[1])]
+pointsz2 = [(0.55-delta[0], y) for y in np.linspace(1.03-delta[1], 1.0375-delta[1], 18)]
 pointsz3 = ua.genTrapezoidSweep(0.550-12*delta[0], 0.5515-12*delta[0], 11, 
-                                   1.03-delta[1], 1.0375-delta[1], 
-                                   1.0325-delta[1], 1.04-delta[1], 18)
+                                   1.03-12*delta[1], 1.0375-12*delta[1], 
+                                   1.0325-12*delta[1], 1.04-12*delta[1], 18)
+offset = -11
+pointsz4 = ua.genTrapezoidSweep(0.550-offset*delta[0], 0.5515-offset*delta[0], 11, 
+                                   1.03-offset*delta[1], 1.0375-offset*delta[1], 
+                                   1.0325-offset*delta[1], 1.04-offset*delta[1], 18)
 
-all_points = points + pointsz1 + pointsz2 + pointsz3
-plt.scatter(np.asarray(all_points)[:,0], np.asarray(all_points)[:,1], c=[i for i in range(len(all_points))])
+#mesure T1(Bz)
+bz = [.1,.5,.8,1,1.2]
+factor = 1.7
+detuning = ua.gen2dTraceSweep(0.554, 0.554-factor*0.0005, 1.035, 1.035+factor*0.00375, 6) # .8, 1, 1.2 T
+plt.scatter(np.asarray(detuning)[:,0], np.asarray(detuning)[:,1], c=[i for i in range(len(detuning))])
+
+detuning2 = ua.gen2dTraceSweep(0.571, 0.571-factor*0.0005, 1.061, 1.061+factor*0.00375, 6) # .5 T
+p1_0, p2_0 = 1.061, 0.571
 
 
-points = analyse.genTrapezoidSweep(0.550-delta[0], 0.550, 2, 
-                                   1.03-delta[1], 1.0375-delta[1], 
-                                   1.0325-delta[1], 1.04-delta[1], 18)
-plt.scatter(np.asarray(points)[:,0], np.asarray(points)[:,1], c=[i for i in range(len(points))])
+detuning3 = ua.gen2dTraceSweep(0.593, 0.593-factor*0.0005, 1.09, 1.09+factor*0.00375, 6) # .1 T
+p1_0, p2_0 = 1.093, 0.592 
 
-for i, (p2, p1) in alive_it(enumerate(points), spinner=None, total=len(points)):
+all_points = points + pointsz1 + pointsz2 + pointsz3 + pointsz4#detuning + detuning2 +detuning3
+fig, ax = plt.subplots()
+img = imshow(tr_array, ax=ax, x_axis=x_axis, y_axis=y_axis, return_fig=True, cbar=False)
+sc = ax.scatter(np.asarray(all_points)[:,0], np.asarray(all_points)[:,1], c=[i for i in range(len(all_points))], cmap='plasma', edgecolor='k', s=100, alpha=0.75)
+plt.show()
+
+
+sw_points = pointsz4
+flbl = 'z4'
+for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_points)):
     #if i < 275: continue # !!!! reprise 1
     #if i < 299: continue # !!!! reprise 2
     
@@ -364,9 +393,12 @@ for i, (p2, p1) in alive_it(enumerate(points), spinner=None, total=len(points)):
 
     imshow(traces, save=True, path=LOG_PATH, show=False,
            metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2), p1=p1, p2=p2, awg_overrange=awg_overrange),
-           filename=f"mesureT1_we_{i}", x_axis=acq_time,
+           filename=f"mesureT1_{flbl}_{i}", x_axis=acq_time,
            y_label='count', x_label='time (s)', cbar=False)
         
     wait(1)
     vm.close()
     wait(1)
+    
+    
+    
