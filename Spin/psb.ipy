@@ -15,6 +15,7 @@ from Utils import analyse as ua
 from Utils import files as uf
 from Utils import plot as up
 from Utils import instruments as ui
+from Utils import utils as uu
 
 from Utils.plot import imshow
 from Pulses.Builder import Pulse, genPWLFile
@@ -118,7 +119,7 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_directio
 # %% save
 img = vm.data_buffer[0].T
 up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
-          title='B=100mT', filename='transition_B=100mT', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH)
+          title='B=800mT', filename='transition_B=800mT_retour', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH)
 
 # %% PSB pulse
 ##### settings
@@ -130,16 +131,16 @@ E = (0 , -.004)
 # read center
 R = (0    , -0.000)
 L = (-.015, 0 )
-E = (-.015 , -.005)
+E = (-.010 , -.005)
 
-tR, tL, tE = 0.05, 0.002, 0.002
+tR, tL, tE = 0.05, 0.0005, 0.0008
 read_delta = dict(P1=0.000, P2=-0.000)
 
 tw = 0.015
 acq_on = 'full' # 'full' | 'read'
 
 # vm
-read_level = {'P1': 1.040, 'P2': 0.554}
+read_level = {'P1': 1.09, 'P2': 0.59}
 to_sweep = 'P1'
 sweep_delta, sweep_nb = 0.003, 101
 x_axis = 'P2'  # 'P1' | 'P2' | 'time'
@@ -324,13 +325,13 @@ detuning = ua.gen2dTraceSweep(0.554, 0.554-factor*0.0005, 1.035, 1.035+factor*0.
 plt.scatter(np.asarray(detuning)[:,0], np.asarray(detuning)[:,1], c=[i for i in range(len(detuning))])
 
 detuning2 = ua.gen2dTraceSweep(0.571, 0.571-factor*0.0005, 1.061, 1.061+factor*0.00375, 6) # .5 T
-p1_0, p2_0 = 1.061, 0.571
+#p1_0, p2_0 = 1.061, 0.571
 
 
 detuning3 = ua.gen2dTraceSweep(0.593, 0.593-factor*0.0005, 1.09, 1.09+factor*0.00375, 6) # .1 T
-p1_0, p2_0 = 1.093, 0.592 
+#p1_0, p2_0 = 1.093, 0.592 
 
-all_points = points + pointsz1 + pointsz2 + pointsz3 + pointsz4#detuning + detuning2 +detuning3
+all_points =  pointsz1 + pointsz2 + pointsz3 + pointsz4#detuning + detuning2 +detuning3
 fig, ax = plt.subplots()
 img = imshow(tr_array, ax=ax, x_axis=x_axis, y_axis=y_axis, return_fig=True, cbar=False)
 sc = ax.scatter(np.asarray(all_points)[:,0], np.asarray(all_points)[:,1], c=[i for i in range(len(all_points))], cmap='plasma', edgecolor='k', s=100, alpha=0.75)
@@ -355,6 +356,85 @@ for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_poi
     E = newE(p1, p2)
     
     tw = 0.015
+    acq_on = 'full' # 'full' | 'read'
+    ##############
+    
+    pulseP1 = Pulse(name='P1', shape_comp=True)
+    pulseP1.add(tw)
+    pulseP1.add(tL, offset=L[0], mark=acq_on=='full')
+    pulseP1.add(tE, offset=E[0], mark=acq_on=='full')
+    pulseP1.add(tL, offset=L[0], mark={'full':True, 'read':(0.9, 1)}[acq_on])
+    pulseP1.add(tR, offset=R[0], mark=(0, 0.9))
+    
+    pulseP2 = Pulse(name='P2', shape_comp=True)
+    pulseP2.add(tw)
+    pulseP2.add(tL, offset=L[1], mark=acq_on=='full')
+    pulseP2.add(tE, offset=E[1], mark=acq_on=='full')
+    pulseP2.add(tL, offset=L[1], mark={'full':True, 'read':(0.9, 1)}[acq_on])
+    pulseP2.add(tR, offset=R[1], mark=(0, 0.9))
+    
+    acq_time = pulseP1.getMarkDuration(awg_sr)
+    ats.acquisition_length_sec.set(acq_time)
+    #ats.sample_rate.set(1000000)
+    
+    awg_overrange = False
+    awg_overrange = send(pulseP1, 1) or awg_overrange
+    awg_overrange = send(pulseP2, 2) or awg_overrange
+    awg_overrange = send(pulseP1, 3, run_after=True) or awg_overrange
+
+    rhP1.ramp.set(p1)
+    rhP2.ramp.set(p2)
+
+
+    vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, wrap_at=nb_trace,
+                          xlabel=f"time (s), point p1:{p1} p2:{p2}", axes_dict={'x':acq_time},
+                          play=True, pause_after_one=True, take_focus=True, show=True)
+    
+    traces = np.array(vm.data_buffer[0].T)
+
+    imshow(traces, save=True, path=LOG_PATH, show=False,
+           metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2), p1=p1, p2=p2, awg_overrange=awg_overrange),
+           filename=f"mesureT1_{flbl}_{i}", x_axis=acq_time,
+           y_label='count', x_label='time (s)', cbar=False)
+        
+    wait(1)
+    vm.close()
+    wait(1)
+    
+    
+    
+# %% mesure T1 apres .8->.1->.8
+# la transition 31-40 a beacuoup bougé
+tr = uf.loadNpz('C:\Codes\Lab-Scripts/Spin/logs/20240821/20240821-225919-transition_B=800mT_retour')
+arr, x_axis, y_axis = tr.get('array'), tr.get('metadata').get('imshow_kwargs').get('x_axis'), tr.get('metadata').get('imshow_kwargs').get('y_axis')
+points = ua.genTrapezoidSweep(0.586, 0.593, 51, 
+                                       1.08, 1.09, 
+                                       1.087, 1.097, 11)
+
+up.scatterOverImg(*points.T, ua.linlen(points), x_axis, y_axis, arr)
+
+nb_trace = 2000
+p1_0, p2_0 = 1.09, 0.590
+
+
+sw_points = points
+flbl = 'oneshot'
+for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_points)):
+    #if i < 275: continue # !!!! reprise 1
+    #if i < 299: continue # !!!! reprise 2
+    
+    # read center
+    R = (0    , -0.000)
+    L = (-.015, 0 )
+    E = (-.010 , -.005)
+    
+    tR, tL, tE = 0.05, 0.0005, 0.0008
+    newL = lambda p1, p2: np.asarray(L) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
+    newE = lambda p1, p2: np.asarray(E) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
+    L = newL(p1, p2)
+    E = newE(p1, p2)
+    
+    tw = 0.01 # 0.015 -> 0.01 gagne 1 heure
     acq_on = 'full' # 'full' | 'read'
     ##############
     
