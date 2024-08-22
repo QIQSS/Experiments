@@ -3,6 +3,7 @@ import os
 import scipy
 from scipy import ndimage
 from scipy.fft import fftfreq, fftshift
+from scipy.optimize import minimize_scalar
 
 from pyHegel import fitting, fit_functions
 from scipy.optimize import curve_fit
@@ -10,6 +11,7 @@ from scipy.optimize import curve_fit
 import numpy as np
 from matplotlib import pyplot as plt
 
+from typing import Literal
 #### array handling
 
 def alternate(arr, enable=True):
@@ -54,6 +56,16 @@ def ctail(arr2d, x=10):
     """ extract the x last columns of 2d array """
     return arr2d[:, len(arr2d[0])-x:]
 
+def sliceColumns(arr, start=None, stop=None, slice_by_val=False):
+    """ return arr[:, start:stop]
+    """ 
+    if slice_by_val:
+        start = findNearest(arr, start, return_type='id')
+        stop = findNearest(arr, stop, return_type='id')
+
+    return arr[:, start:stop]
+
+
 def meandiff(a):
     return np.mean(np.diff(a))
 
@@ -65,22 +77,25 @@ def fft(arr):
     freq = fftshift(fftfreq(len(arr)))
     return freq, vals
 
-def gaussian(arr, sigma=2):
+def gaussian(arr, sigma=20, **kwargs):
     """ returns a copied array with gaussian filter """
-    return ndimage.gaussian_filter1d(arr, sigma)
-
-def gaussianLineByLine(image, sigma=20, **kwargs): 
+    return ndimage.gaussian_filter1d(arr, sigma, **kwargs)
+ 
+def gaussianlbl(image, sigma=20, **kwargs):
+    """ gaussian line by line """
     image = np.asarray(image)
     return ndimage.gaussian_filter1d(image, sigma, axis=1, **kwargs)
 
+
 #### compute things
 
-def findNearest(array, value, return_id=False):
+def findNearest(array, value, 
+                return_type: Literal['val', 'id'] = 'val'):
     """ find the nearest element of value in array.
     return the value or the index """
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
-    if return_id: return idx
+    if return_type=='id': return idx
     return array[idx]
 
 
@@ -88,11 +103,14 @@ def rSquared(y_true, y_pred):
     return np.sum((y_true - y_pred)**2)
 
 def histogram(arr, bins=100, 
-              get_x_axis=False, 
+              return_type: Literal['all', 'hist'] = 'hist',
               **kwargs):
+    """
+    return_type: hist or all: x, hist
+    """
     arr = np.asarray(arr).flatten()
     hist, bin_list = np.histogram(arr, bins, **kwargs)
-    if get_x_axis:
+    if return_type == 'all':
         x = (bin_list[:-1] + bin_list[1:]) / 2
         return x, hist
     else:
@@ -117,6 +135,27 @@ def classify(image, threshold, inverse=False):
     if inverse: bool_image = ~bool_image
     int_image = np.array(bool_image, dtype=int)
     return int_image
+
+def classifyWithDirection(array1d, threshold, tolerance_percent,
+                          inverse=False):
+    """"""""
+    array1d = np.array(array1d)
+    
+    # Calculate tolerance factor and bounds
+    tolerance_factor = tolerance_percent / 100
+    lower_bound = threshold * (1 - tolerance_factor)
+    upper_bound = threshold * (1 + tolerance_factor)
+    
+    # Initialize the output classification array
+    int_array = np.zeros(array1d.shape, dtype=int)
+    
+    print(lower_bound, upper_bound)
+    # Classify each element
+    int_array[array1d < lower_bound] = -1 if not inverse else 1
+    int_array[array1d > upper_bound] = 1 if not inverse else -1
+    # Elements within bounds are already set to 0 by default initialization
+    
+    return int_array
 
 def allequal(arr, val):
     return np.all(arr == val) 
@@ -167,12 +206,19 @@ def classTraces(arr2d, timelist):
             continue
     return d
 
-def findClassifyingThreshold(double_gaussian_parameters):
+def findClassifyingThreshold(double_gaussian_parameters,
+                             method: Literal['min', 'mid'] = 'min'):
     """ estimate the treshold for classifying a double gaussian.
     use the results from fitDoubleGaussian """
     sigma1, sigma2, mu1, mu2, A1, A2 = double_gaussian_parameters
-    midpoint_threshold = (mu1 + mu2) / 2
-    return midpoint_threshold
+    match method:
+        case 'mid':
+            th = (mu1 + mu2) / 2
+        case 'min':
+            def f(x): return f_doubleGaussian(x, *double_gaussian_parameters)
+            result = minimize_scalar(f, bounds=(min(mu1, mu2), max(mu1, mu2)), method='bounded')
+            th = result.x
+    return th
 
 def findPeaks(points, show_plot=False, **kwargs):
     import scipy

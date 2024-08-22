@@ -11,6 +11,7 @@ import matplotlib.image as mplimg
 
 from . import files as uf
 from . import analyse as ua
+from . import utils as uu
 
 import matplotlib.colors as mcolors
 
@@ -224,7 +225,7 @@ def _sliceAxis(axis, nbpts, slice_, slice_by_val=False):
         full_axis = np.linspace(axis[0], axis[-1], nbpts)
         
     if slice_by_val:
-        slice_ = [ua.findNearest(full_axis, sli, True) if sli is not None else None for sli in slice_]
+        slice_ = [ua.findNearest(full_axis, sli, 'id') if sli is not None else None for sli in slice_]
         slice_[1] = slice_[1]+1 if slice_[1] is not None else None
     sliced_axis = full_axis[slice_[0]:slice_[1]]
 
@@ -300,8 +301,6 @@ def imshowFromNpz(filename, return_dict=False, **kwargs):
     imshowFromNpzDict(npzdict)
     if return_dict: return npzdict
 
-
-#---- 1D
 def qplot(array, show=True,
           save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
           
@@ -309,8 +308,10 @@ def qplot(array, show=True,
           x_slice=(None, None), slice_by_val=False,
           
           title='', text='', text_pos='dr', text_color='grey',
-          grid=False,
+          grid=True,
           log_y=False, log_x=False,
+          
+          vline = None,
           
           use_latex=False,
           return_fig=False,
@@ -394,7 +395,10 @@ def qplot(array, show=True,
         ax.set_yscale('log')
     if log_x:
         ax.set_xscale('log')
-        
+    if vline:
+        for vl in uu.ensureList(vline):
+            ax.axvline(x=vl, linestyle=':', label=str(vline))
+            
     # modded fig
     fig = _modFig(fig)
     
@@ -416,6 +420,22 @@ def qplot(array, show=True,
         return
     if return_fig:
         return fig
+
+def scatter(tuplelist):
+    """ tuplelist: [(x,y,val), ...]
+    """
+    x, y = np.asarray(tuplelist)[:,0], np.asarray(tuplelist)[:,1]
+    c = [i for i in range(len(tuplelist))]
+    plt.scatter(x, y, c=c, cmap='inferno', s=150)
+
+def scatterOverImg(sc_x, sc_y, sc_pts, im_x, im_y, im_pts):
+    fig, ax = plt.subplots()
+    img = imshow(im_pts, ax=ax, x_axis=im_x, y_axis=im_y,
+                 return_fig=True, cbar=False)
+    sc = ax.scatter(sc_x, sc_y, c=sc_pts, cmap='plasma', edgecolor='black', s=100, alpha=0.6)
+    cbar_sc = plt.colorbar(sc, ax=ax)
+    cbar_sc.set_label('T1 (s)')
+    plt.show()
 
 
 #### SPECIAL CASE PLOTS
@@ -509,19 +529,59 @@ def plotDoubleGaussian(x, sigma1, sigma2, mu1, mu2, A1, A2, points=None,
     ax.set_title(title)
     
     
-def plotSideBySide(*args, inline=False, link_all_axis=False):
+def plotSideBySide(*args, inline=False, link_all=False):
     """ plot arrays in args side by side.
     can take 1d or 2d arrays
     """
     import pyqtgraph as pg
+    from pyqtgraph import colormap
+    
     w = pg.GraphicsLayoutWidget()
-    plots = []
+    plots = [] # plots and images
+    trace_plots = []
+    trace_lines = []
+    images = [] # images only
+    
+    def update_trace(line, index):
+        pos = line.value()
+        if 0 <= pos < images[index].shape[1]:
+            trace_data = images[index][int(pos)]
+            trace_plots[index].clear()
+            trace_plots[index].plot(trace_data)
+        else:
+            trace_plots[index].clear()
+
+    def sync_lines(line):
+        pos = line.value()
+        for l in trace_lines:
+            l.setValue(pos)
+
+    def line_moved(l, idx):
+        update_trace(l, idx)
+        if link_all:
+            sync_lines(l)
+
     print(len(args))
     for i, arr in enumerate(args):
-        if np.asarray(arr).ndim == 2:
+        if arr.ndim == 2:
             p = w.addPlot(row=0, col=i)
             img = pg.ImageItem(image=arr.T)
+            img.setLookupTable(colormap.get('viridis').getLookupTable())
             p.addItem(img)
+            images.append(arr)
+
+            # draggable region
+            line = pg.InfiniteLine(angle=0, movable=True)
+            line.setZValue(10)
+            p.addItem(line)
+            trace_lines.append(line)
+            
+            # Add a plot below the 2D plot for the trace
+            trace_plot = w.addPlot(row=1, col=i)
+            trace_plots.append(trace_plot)
+            trace_plot.setFixedHeight(100)
+            line.sigPositionChanged.connect(lambda l, idx=i: line_moved(l, idx))
+
         elif np.asarray(arr).ndim == 1:
             p = w.addPlot(row=0, col=i)
             p.plot(arr)
@@ -529,8 +589,9 @@ def plotSideBySide(*args, inline=False, link_all_axis=False):
             raise ValueError(f"Array at index {i} is not 1D or 2D")
 
         plots.append(p)
+    
 
-    if link_all_axis:
+    if link_all:
         first_plot = plots[0]
         for p in plots:
             if p != first_plot:
@@ -549,4 +610,5 @@ def plotSideBySide(*args, inline=False, link_all_axis=False):
         os.remove(temp_filename)
     else:
          w.show()
+         
     return w
