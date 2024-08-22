@@ -174,6 +174,22 @@ def findClassifyingThreshold(double_gaussian_parameters):
     midpoint_threshold = (mu1 + mu2) / 2
     return midpoint_threshold
 
+def findPeaks(points, show_plot=False, **kwargs):
+    import scipy
+    peaks, properties = scipy.signal.find_peaks(points, **kwargs)
+    
+    if show_plot:
+        plt.figure(figsize=(10, 6))
+        plt.plot(points)
+        plt.plot(peaks, points[peaks], 'rx')
+        plt.vlines(peaks, ymin=0, ymax=max(points), color='r', linestyle='--')
+        for peak in peaks:
+            plt.text(peak, points[peak], f'({peak}, {points[peak]:.2f})', 
+                     ha='center', va='bottom', color='red', fontsize=9)
+        plt.show()
+    return peaks, properties
+
+
 #### fit functions
 def f_gaussian(x, sigma, mu, A):
     return fit_functions.gaussian(x, sigma, mu, A)
@@ -218,7 +234,6 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
             break
         
         try:
-            print(best_params)
             params, _  = curve_fit(function, x, y, p0=p0)
             y_pred = function(x, *params)
             error = rSquared(y, y_pred)
@@ -249,8 +264,6 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
         param_names = list(sig.parameters.keys())[1:]  # skip the first parameter (x)
 
         param_text = ', '.join(f'{name}={value:.3f}' for name, value in zip(param_names, best_params))
-        # TODO: pipe this to custom qplot
-        # TODO: custom qplot...
         plt.text(0.05, 0.95, f'Fit parameters:\n{param_text}', 
                  transform=plt.gca().transAxes, fontsize=12, verticalalignment='top',
                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))

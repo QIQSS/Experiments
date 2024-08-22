@@ -1,6 +1,9 @@
 """
 my ipython startup config
 """
+#
+T = True
+F = False
 
 # ipython:
 from IPython import get_ipython

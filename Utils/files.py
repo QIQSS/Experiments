@@ -6,23 +6,35 @@ from matplotlib import pyplot as plt
 from pyHegel import commands
 from pyHegel.instruments_base import BaseInstrument
 
+from typing import List
 
 from . import analyse as a
 from . import plot as p
+from . import utils as uu
 
 #### file
-def fileIn(paths, full_path=True):
-    """ List all files in the directory(/ies).    """
+def fileIn(paths: str|List[str],
+           contains: str|List[str] = '',
+           full_path=True):
+    """ List all files in the directory(/ies).
+    """
     files = []
-    if not isinstance(paths, (list, tuple)):
-        paths = [paths]
+    paths = uu.ensureList(paths)
+    contains = uu.ensureList(contains)
+    
     for path in paths:
         ls = os.listdir(path)
         ls_full = [os.path.join(path, f) for f in ls]
         files_in_p = [f_or_d for f_or_d in ls_full if os.path.isfile(f_or_d)]
+
         if full_path:
             files_in_p = [os.path.join(path, f) for f in files_in_p]
+
+        if contains:
+            files_in_p = [f for f in files_in_p if any(substring in os.path.basename(f) for substring in contains)]
+
         files += files_in_p
+
     return files
 
 

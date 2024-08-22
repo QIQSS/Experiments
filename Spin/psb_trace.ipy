@@ -10,7 +10,7 @@ from Utils import files as uf
 from Utils import plot as up
 
 from Utils.plot import imshow
-#from alive_progress import alive_it
+from alive_progress import alive_it
 from tqdm import tqdm
 
 from pyHegel import fitting as fit
@@ -19,12 +19,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib
 
-# %% 20240820 T1 zone 1
-days = ['20240818', '20240819']
-files = uf.fileIn([LOG_PATH+day for day in days])
-files = [fname for fname in sorted(files) if 'mesureT1_z1' in fname]
-
-
+# %% 20240820 T1 zone 1 et 2
+days = ['20240816', '20240817', '20240818', '20240819']
+files = sorted(uf.fileIn([LOG_PATH+day for day in days], 
+                         contains=('mesureT1_we', 'mesureT1_2_we',
+                                   'mesureT1_z1', 'mesureT1_z2')))
 
 # %%% t1: -2 awgoverrange, -1 threshold error, 0 exp fit error
 def pl(file=files[i:=90]):
@@ -56,24 +55,28 @@ def pl(file=files[i:=90]):
                        [0.1, 0.5, x[10], x[-10], np.max(hist)/8, np.max(hist)/8],
                        [0.5, 0.5, np.mean(x), np.mean(x), np.max(hist)/8, np.max(hist)/8],
                      ],
-                inspect=False, show_plot=False, verbose=True,)
-    th = ua.findClassifyingThreshold(dg_params)
-    up.plotDoubleGaussian(x, *dg_params, hist, th, title=f"{file}")
-    plt.show()
-    clas = ua.classify(filt, th, inverse=True)
-    #up.imshowSideBySide(arr, filt, clas, x_axis=timelist)  
-
+                inspect=False, show_plot=False, verbose=False,)
+    
+    try:
+        th = ua.findClassifyingThreshold(dg_params)
+        clas = ua.classify(filt, th, inverse=True)
+    except Exception as e:
+        return -1, p1, p2, file
+    #up.plotSideBySide(arr, filt, clas)  
+    #up.plotDoubleGaussian(x, *dg_params, hist, th, title=f"{file.split('-')[-1]}")
+    #plt.show()
+    
     stats_dict = ua.classTraces(clas, timelist)
     counted_trace = stats_dict.get('low') + stats_dict.get('high')
     
     t1 = 0
     points = []
-    if counted_trace > 10:
+    if counted_trace > 20:
         points = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
         #qplot(timelist, stats)
         #fit_res = fit.fitplot(ua.f_exp, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0])
         #fit_res = fit.fitcurve(ua.f_exp, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0])
-        exp_decay = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0], inspect=False, show_plot=True)
+        exp_decay = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0], inspect=False, show_plot=False)
         plt.show()
         if exp_decay is not None:
             t1 = exp_decay[0]
@@ -81,19 +84,21 @@ def pl(file=files[i:=90]):
             print('no exp fit, t1=0')
         
     #plt.show()
-    #wait(1)
+    wait(1)
     return t1, p1, p2, file
 
 # %%% compute
-t1p1p2_list = [pl(f) for f in tqdm(files)]
+t1p1p2_list = [pl(f) for f in alive_it(all_files, spinner=None)]
 
 # %%% post post process
 
 overrange_list = [data for data in t1p1p2_list if data[0] == -2]
+fiterror_list = [data for data in t1p1p2_list if data[0] == -1]
 zeros_list = [data for data in t1p1p2_list if data[0] == 0]
 t1p1p2_clean = [data  for data in t1p1p2_list \
                   if data not in overrange_list and \
                      data not in zeros_list and \
+                     data not in fiterror_list and \
                      data[0] < 0.028]
 
 # %%% plot
@@ -119,8 +124,10 @@ tr_array = tr_map.get('array')
 x_axis, y_axis = tr_map['metadata']['imshow_kwargs']['x_axis'], tr_map['metadata']['imshow_kwargs']['y_axis']
 
 fig, ax = plt.subplots()
-img = imshow(tr_array, ax=ax, x_axis=x_axis, y_axis=y_axis, return_fig=True, cbar=False)
-sc = ax.scatter(x, y, c=pts, cmap='plasma', edgecolor='k', s=100, alpha=0.75)
+img = imshow(tr_array, ax=ax, x_axis=x_axis, y_axis=y_axis, 
+             x_label='P2 (V)', y_label='P1 (V)',
+             return_fig=True, cbar=False)
+sc = ax.scatter(x, y, c=pts, cmap='plasma', edgecolor='black', s=100, alpha=0.6)
 cbar_sc = plt.colorbar(sc, ax=ax)
 cbar_sc.set_label('T1 (s)')
 plt.show()
@@ -230,10 +237,6 @@ ax.set_ylabel('P1 read (V)')
 
 cbar = plt.colorbar(sc, ax=ax, label='1/T1 (s)', cmap='viridis')
 plt.show()
-
-# %%% plot just overrange / zeros
-
-# extract 243: prob >> 0.5
 
 
 # %% 20240816 T1 map 2, meme point.
