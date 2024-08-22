@@ -12,6 +12,13 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from typing import Literal
+
+#### new array
+
+
+def linlen(arr):
+    return np.linspace(0, len(arr), len(arr))
+
 #### array handling
 
 def alternate(arr, enable=True):
@@ -357,4 +364,4 @@ def genTrapezoidSweep(x_start, x_stop, x_nb, y_start0, y_stop0, y_startn, y_stop
         for y in y_values:
             result.append((x, y))
     
-    return result
+    return np.array(result)
