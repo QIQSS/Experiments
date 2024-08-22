@@ -10,6 +10,9 @@ from alive_progress import alive_bar, alive_it
 from pyHegel import instruments
 from pyHegel.commands import wait
 
+
+from pyHegel import fitting as fit
+
 from Utils import analyse as ua
 from Utils import files as uf
 from Utils import plot as up
@@ -17,6 +20,8 @@ from Utils import instruments as ui
 
 from Pulses.Builder import Pulse, genPWLFile
 from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
+
+f = ua.f_expDecay
 
 # %% setup
 
@@ -98,7 +103,6 @@ pts = [acquire(acq_time) for _ in alive_it(range(800), spinner=None)]
 filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n', pts, metadata=dict(pulse=str(pulseStep), p1=rhP1, p2=rhP2, t_acq=acq_time))
 
 # %% fit 1
-
 d = uf.loadNpz('C:\\Codes\\Lab-Scripts/Logs/20240820/20240820-143521-1000traces_TC=100n.npz')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
@@ -106,10 +110,6 @@ x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
 
 xx=x[5018:5300]
 yy=y[5018:5300]
-
-from pyHegel import fitting as fit
-
-f = ua.f_expDecay
 
 fit.fitplot(f,xx,yy,p0=[18e-6,-2,-0.005,-48],noadjust=[])
 
@@ -123,10 +123,6 @@ x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
 xx=x[5018:5300]
 yy=y[5018:5300]
 
-from pyHegel import fitting as fit
-
-f = ua.f_expDecay
-
 fit.fitplot(f,xx,yy,p0=[12.1e-6,-2,-0.005,-48],noadjust=[]) 
 
 # %% fit 3
@@ -139,12 +135,7 @@ x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
 xx=x[5018:5300]
 yy=y[5018:5300]
 
-from pyHegel import fitting as fit
-
-f = ua.f_expDecay
-
 fit.fitplot(f,xx,yy,p0=[59.2e-6,-2,-0.005,-48],noadjust=[]) 
-
 
 # %% Pulse two step on two gates
 p1_0, p2_0 = 1.045, 0.545
@@ -181,7 +172,7 @@ pts = [acquire(acq_time) for _ in alive_it(range(800), spinner=None)]
 #                     axes_dict={'x': acq_time})
 
 # %% save
-filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n', pts, metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2), p1=rhP1, p2=rhP2, t_acq=acq_time))
+filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n_p1', pts, metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2), p1=rhP1, p2=rhP2, t_acq=acq_time))
 
 
 # %% fit
@@ -194,10 +185,6 @@ x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
 xx=x[5000:5300]
 yy=y[5000:5300]
 
-from pyHegel import fitting as fit
-
-f = ua.f_expDecay
-
 fit.fitplot(f,xx,yy,p0=[0.56e-6,1,-0.005,-46],noadjust=[]) 
 
 # %% fit 
@@ -209,8 +196,17 @@ x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
 xx=x[5000:5300]
 yy=y[5000:5300]
 
-from pyHegel import fitting as fit
-
-f = ua.f_expDecay
 
 fit.fitplot(f,xx,yy,p0=[0.56e-6,1,-0.005,-46],noadjust=[]) 
+
+# %% fit
+d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-162229-800traces_TC=500n_p1')
+arr = d.get('array')
+y = np.mean(arr, axis=0)
+x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+
+xx=x[5018:5300]
+yy=y[5018:5300]
+
+
+fit.fitplot(f,xx,yy,p0=[22e-6,-2,-0.005,-48],noadjust=[]) 
