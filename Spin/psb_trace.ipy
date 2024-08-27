@@ -100,10 +100,10 @@ kwargs = dict(
               scatter_cbar=True,
               scatter_size=20,
               scatter_alpha=0.7,
-              figsize=[5,4])
+              figsize=[5,4],
+              return_type='win')
 
 imshow(map_.get('array'), **kwargs)
-
 
 # %% 20240821 T1(B)
 files100 = sorted(uf.fileIn(LOG_PATH+'20240821', contains='mesureT1_bz=100m'))

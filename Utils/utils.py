@@ -36,3 +36,33 @@ class customDict(dict):
                     return val
             return default
         return _searchKey(self, key)
+
+import sys
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
+from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, QToolBar
+
+class mplqt(QMainWindow):
+    """ to force a fig to be interactive even if %matplotlib is set to inline
+    require: %gui qt
+    """
+    def __init__(self, fig):
+        super().__init__()
+        self.widget = QWidget()
+        self.setCentralWidget(self.widget)
+        layout = QVBoxLayout()
+        self.widget.setLayout(layout)
+        self.canvas = FigureCanvas(fig)
+
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas)
+        
+        self.setWindowTitle('interactive pls')
+        
+        self.resize(800, 600)
+        self.show()
+    
+    def tight_layout(self):
+        self.canvas.figure.tight_layout()
+        self.canvas.draw()

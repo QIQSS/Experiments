@@ -1,5 +1,7 @@
 from matplotlib import pyplot as plt
 
+from typing import Literal
+
 # for clipboard and png
 from PyQt5.QtGui import QImage
 from PyQt5.QtWidgets import QApplication
@@ -32,18 +34,20 @@ def _imshow_make_kwargs(
            
            title='', text='', text_pos='dr', text_color='white',
            cbar=True, cbar_label='', cbar_title='',
-           cmap='viridis',
+           cmap: Literal['<mpl_cmap>', 'random'] = 'viridis',
            grid=False,
            randomize_cmap=False,
            
            scatter_points=None, # [(val, x, y), ... , ] 
-           scatter_size:int = 50,
-           scatter_cbar=False, scatter_cmap='inferno', scatter_cbar_label='',
-           scatter_alpha=1,
+           scatter_size: int = 50,
+           scatter_cbar: bool = False, 
+           scatter_cmap: Literal['<mpl_cmap>'] = 'inferno',
+           scatter_cbar_label: str = '',
+           scatter_alpha: int = 1,
            
-           use_latex=False,
-           return_fig=False,
-           figsize=None, ax=None,
+           use_latex: bool = False,
+           figsize: tuple = None,
+           return_type: Literal['none', 'fig', 'png', 'win'] = 'none',
            **plot_kwargs):
     """ my custom imshow function.
     with easier axis extent: x_axis=, y_axis=.
@@ -170,11 +174,10 @@ def imshow(array, **kwargs):
         fig, ax = plt.subplots(1, 1, gridspec_kw=dict(width_ratios=[25]), figsize=figsize)
     
 
-    x_label, y_label, title = kw['x_label'], kw['y_label'], kw['title']
     im = ax.imshow(array, **plot_kwargs)
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
-    ax.set_title(title)
+    ax.set_xlabel(kw['x_label'])
+    ax.set_ylabel(kw['y_label'])
+    ax.set_title(kw['title'])
 
     if cbar:
         fig.colorbar(im, label=kw['cbar_label'], ax=ax, cax=cbax)
@@ -224,11 +227,16 @@ def imshow(array, **kwargs):
     #fig.tight_layout()
     if not kw['show']: 
         plt.close(fig)
-        return
-    fig.show()
-
-    if kw['return_fig']:
-        return fig
+        
+    match kw['return_type']:
+        case 'fig':
+            return fig
+        case 'png':
+            return _figToPng(fig)
+        case 'win':
+            return uu.mplqt(fig)
+        case 'none':
+            return
 
 def _randomizeColormap(cmap):
     if isinstance(cmap, str):
@@ -279,14 +287,17 @@ def _writeText(ax, text, text_pos='dr', text_color='grey', text_size=12):
     ax.text(*pos, f"{text}", color=text_color, fontsize=text_size,
         ha=ha, va=va, transform=ax.transAxes)
     
+def _figToPng(fig):
+    png_buffer = io.BytesIO()
+    fig.savefig(png_buffer, format='png')
+    png_buffer.seek(0)
+    return png_buffer.getvalue()
+    
 def _saveDataAndFig(path, filename, array, fig=None, metadata={}, save_fig=False, save_png=False):
     if fig and save_fig:
         metadata['_figure'] = fig
     if fig and save_png:
-        png_buffer = io.BytesIO()
-        fig.savefig(png_buffer, format='png')
-        png_buffer.seek(0)
-        metadata['_png'] = png_buffer.getvalue()
+        metadata['_png'] = _figToPng(fig)
     uf.saveToNpz(path, filename, array, metadata=metadata)
 
 def _modFig(fig):
