@@ -20,18 +20,27 @@ COLORS_D = ['#5b1d2c', '#c6e1ea', '#505c76', '#162067', '#070c20']
 
 
 #### BASIC PLOTS
-
-def imshow(array, show=True,
+def _imshow_make_kwargs(
+        array,
+        show=True,
+           
            save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
            
            x_axis=None, y_axis=None, x_label='', y_label='',
            x_axis2=None, x_label2='', y_axis2=None, y_label2='',
            x_slice=(None,None), y_slice=(None, None), slice_by_val=False,
            
-           title='', text='', text_pos='dr', text_color='grey',
+           title='', text='', text_pos='dr', text_color='white',
            cbar=True, cbar_label='', cbar_title='',
+           cmap='viridis',
            grid=False,
-           random_cmap=False, randomize_cmap=False,
+           randomize_cmap=False,
+           
+           scatter_points=None, # [(val, x, y), ... , ] 
+           scatter_size:int = 50,
+           scatter_cbar=False, scatter_cmap='inferno', scatter_cbar_label='',
+           scatter_alpha=1,
+           
            use_latex=False,
            return_fig=False,
            figsize=None, ax=None,
@@ -72,126 +81,153 @@ def imshow(array, show=True,
         cbar_label
         cbar_title
         grid: bool = False
+        
+        scatter_points: list of tuples (c, x, y), where c is the color or value, x and y are the coordinates.
+        scatter_cmap: colormap for scatter points.
+        scatter_cbar_label: colorbar label for scatter points.
+        scatter_cbar: boolean to enable colorbar for scatter points.
     
     # text:    
         call _writeText(ax, text, text_pos, text_color)
         
-    # plot kwargs:
-        cmap: str, mpl colormap. some idea: viridis, PiYG, seismic, cividis, RdBu, Purples, Blues
-        random_cmap: False, use a random matplotlib cmap
+        cmap: str, mpl colormap. some idea: viridis, PiYG, seismic, cividis, RdBu, Purples, Blues, random
         randomize_cmap: False, randomize the points of the cmap
     
     # other
         use_latex = False
     """
-    # TODO: add overriding of argument for Npz and NpzDict
-    if type(array) == dict: return imshowFromNpzDict(array)
-    if type(array) == str: return imshowFromNpz(array)
-    
-    plot_kwargs['interpolation'] = 'none'
-    plot_kwargs['aspect'] = 'auto'
-    plot_kwargs['origin'] = 'lower'
-    plot_kwargs['cmap'] = plot_kwargs.pop('cmap', 'viridis')
-    if random_cmap:
-        plot_kwargs['cmap'] = np.random.choice(plt.colormaps())
-        print(f"cmap used: {plot_kwargs['cmap']}")
-    if randomize_cmap:
-        plot_kwargs['cmap'] = _randomizeColormap(plot_kwargs['cmap'])
+    return locals()
 
-    # save all kwargs:
-    all_kwargs = locals() # !! no new vars before this line
-    #print(all_kwargs)
+def imshow(array, **kwargs):
+
+    # prepare kwargs
+    called_kwargs = kwargs
+    full_kwargs = _imshow_make_kwargs(array, **called_kwargs)
+    kw = full_kwargs
     
+    # if array is not an array:
+    if isinstance(array, (dict, uu.customDict)): 
+        return imshowFromNpzDict(array, **called_kwargs)
+    if type(array) == str:
+        return imshowFromNpz(array, **called_kwargs)
+    
+    # default kwargs for plt.imshow
+    plot_kwargs = {'interpolation': 'none', 'aspect': 'auto', 'origin': 'lower'}
+    
+    # prepare colormaps
+    cmap = kw['cmap']
+    if cmap == 'random':
+        cmap = np.random.choice(plt.colormaps())
+        print(f"cmap used: {cmap}")
+    if kw['randomize_cmap']:
+        plot_kwargs['cmap'] = _randomizeColormap(plot_kwargs['cmap'])
+    plot_kwargs['cmap'] = cmap
+
     # latex
-    plt.rcParams.update({'text.usetex': use_latex})
+    plt.rcParams.update({'text.usetex': kw['use_latex']})
     
     # AXES:
-    x_axis = _prepAxis(x_axis)
-    y_axis = _prepAxis(y_axis)
+    x_axis = _prepAxis(kw['x_axis'])
+    y_axis = _prepAxis(kw['y_axis'])
     if None not in x_axis and None in y_axis:
         y_axis = [0, len(array)]
     if None not in y_axis and None in x_axis:
         x_axis = [0, len(array[0])]
 
-    x_axis2 = _prepAxis(x_axis2)
-    y_axis2 = _prepAxis(y_axis2)
+    x_axis2 = _prepAxis(kw['x_axis2'])
+    y_axis2 = _prepAxis(kw['y_axis2'])
 
     # slicing:
+    x_slice, y_slice = kw['x_slice'], kw['y_slice']
+    slice_by_val = kw['slice_by_val']
     if x_slice != (None, None):
         if isinstance(x_slice, int): x_slice = (0, x_slice)
         x_axis, x_slice = _sliceAxis(x_axis, array.shape[1], x_slice, slice_by_val)
-        x_axis2, x_slice = _sliceAxis(x_axis2, array.shape[1], x_slice)
+        x_axis2, x_slice = _sliceAxis(kw['x_axis2'], array.shape[1], x_slice)
         array = array[:, x_slice[0]:x_slice[1]]
     if y_slice != (None, None):
         if isinstance(y_slice, int): y_slice = (0, y_slice)
         y_axis, y_slice = _sliceAxis(y_axis, array.shape[0], y_slice, slice_by_val)
-        y_axis2, y_slice = _sliceAxis(y_axis2, array.shape[0], y_slice)
+        y_axis2, y_slice = _sliceAxis(kw['y_axis2'], array.shape[0], y_slice)
         array = array[y_slice[0]:y_slice[1]]
-            
+        
     extent = (x_axis[0], x_axis[-1], y_axis[0], y_axis[-1])
     if None not in extent:  
         plot_kwargs['extent'] = extent
     
     
     # PLOT
-    # TODO: better handling of given ax
-    if not ax:
-        if cbar:
-            fig, [ax, cax] = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[25, 1]), figsize=figsize)
-        else:
-            fig, ax = plt.subplots(figsize=figsize)
+    # TODO: cbar position / size
+    cbar, scatter_cbar = kw['cbar'], kw['scatter_cbar']
+    figsize= kw['figsize']
+    if cbar and scatter_cbar:
+        fig, [ax, cbax, scbax] = plt.subplots(1, 3, gridspec_kw=dict(width_ratios=[25, 1.5, 1.5]), figsize=figsize)
+    elif cbar and not scatter_cbar:
+        fig, [ax, cbax] = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[25, 1.5]), figsize=figsize)
+    elif not cbar and scatter_cbar:
+        fig, [ax, scbax] = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[25, 1.5]), figsize=figsize)
     else:
-        fig = ax.figure
-        if cbar:
-            cax = fig.add_axes([1.0, 0.12, 0.02, 0.8])
-        else:
-            cax = None
-        
+        fig, ax = plt.subplots(1, 1, gridspec_kw=dict(width_ratios=[25]), figsize=figsize)
+    
+
+    x_label, y_label, title = kw['x_label'], kw['y_label'], kw['title']
     im = ax.imshow(array, **plot_kwargs)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title)
-    #ax.autoscale(False)
+
+    if cbar:
+        fig.colorbar(im, label=kw['cbar_label'], ax=ax, cax=cbax)
+        cbax.set_title(kw['cbar_title'])
+    
+    if kw['grid']: ax.grid()
 
 
     # secondary x/y -axis
     if len(x_axis2) > 1:
         ax2 = ax.twiny()
         ax2.set_xlim(*x_axis2)
-        ax2.set_xlabel(x_label2)
+        ax2.set_xlabel(kw['x_label2'])
     if len(y_axis2) > 1:
         axy2 = ax.twinx()
         axy2.set_ylim(*y_axis2)
-        axy2.set_ylabel(y_label2)
+        axy2.set_ylabel(kw['y_label2'])
 
+    sc_pts = kw['scatter_points']
+    if sc_pts:
+        scatter_x = [pt[2] for pt in sc_pts]
+        scatter_y = [pt[1] for pt in sc_pts]
+        scatter_c = [pt[0] for pt in sc_pts]
+        scatter = ax.scatter(scatter_x, scatter_y, c=scatter_c, s=kw['scatter_size'], cmap=kw['scatter_cmap'],
+                             alpha=kw['scatter_alpha'])
 
-    if cbar and cax:
-        fig.colorbar(im, label=cbar_label, ax=ax, cax=cax)
-        cax.set_title(cbar_title)
-    if grid: 
-        ax.grid()
-
+        if scatter_cbar:
+            fig.colorbar(scatter, label=kw['scatter_cbar_label'], ax=ax, cax=scbax)
+            #cbax.set_title(kw['scatter_cbar_title'])
+    fig.tight_layout()
     # modded fig
     fig = _modFig(fig)
 
     # saving
-    if save:
-        all_kwargs.pop('save')
-        all_kwargs.pop('array')
-        all_kwargs.pop('show')
-        metadata = all_kwargs.pop('metadata')
-        metadata['imshow_kwargs'] = all_kwargs
+    if kw['save']:
+        called_kwargs.pop('save')
+        called_kwargs.pop('show', None)
+        metadata = kw.pop('metadata')
+        metadata['imshow_kwargs'] = called_kwargs
+        path, filename, save_fig, save_png = kw['path'], kw['filename'], kw['save_fig'], kw['save_png']
+        #print(path, filename, metadata)
         _saveDataAndFig(path, filename, array, fig, metadata, save_fig, save_png)
         
-    if text:
-        _writeText(ax, text, text_pos=text_pos, text_color=text_color)
+    if kw['text']:
+        _writeText(ax, kw['text'], text_pos=kw['text_pos'], text_color=kw['text_color'])
     
-    fig.tight_layout()
-    if not show: 
+    #fig.tight_layout()
+    if not kw['show']: 
         plt.close(fig)
         return
-    #fig.show()
-    if return_fig:
+    fig.show()
+
+    if kw['return_fig']:
         return fig
 
 def _randomizeColormap(cmap):
@@ -284,27 +320,27 @@ def showPng(binary):
     plt.imshow(img)
     plt.axis('off')
     
-def imshowFromNpzDict(npzdict):
+def imshowFromNpzDict(npzdict, **new_kwargs):
     """ imshow the npzdict returned from a loadNpz:
         {'array':.., 'metadata':{'imshow_kwargs':{}, ...}} """
         
     imshow_kwargs = npzdict.get('metadata', {}).get('imshow_kwargs', {})
     array = npzdict.get('array')
-    plot_kwargs = imshow_kwargs.pop('plot_kwargs', {})
-    imshow(array, **imshow_kwargs, **plot_kwargs)
+    imshow_kwargs = uu.mergeDict(imshow_kwargs, new_kwargs)
+    imshow(array, **imshow_kwargs)
     
-def imshowFromNpz(filename, return_dict=False, **kwargs):
+def imshowFromNpz(filename, return_dict=False, **new_kwargs):
     """ if the Npz was saved with imshow(array, save=True),
     it will load the file and call imshow with the right kwargs
     """
     npzdict = uf.loadNpz(filename)
-    imshowFromNpzDict(npzdict)
+    imshowFromNpzDict(npzdict, **new_kwargs)
     if return_dict: return npzdict
 
-def qplot(array, show=True,
+def qplot(array, x_axis=None, show=True,
           save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
           
-          x_axis=None, x_label='', y_label='',
+          x_label='', y_label='',
           x_slice=(None, None), slice_by_val=False,
           
           title='', text='', text_pos='dr', text_color='grey',
@@ -421,21 +457,18 @@ def qplot(array, show=True,
     if return_fig:
         return fig
 
-def scatter(tuplelist):
-    """ tuplelist: [(x,y,val), ...]
+def scatter(tuplelist, x_id=0, y_id=1, val_id=2):
+    """ tuplelist: [(val, x, y), ...]
     """
-    x, y = np.asarray(tuplelist)[:,0], np.asarray(tuplelist)[:,1]
-    c = [i for i in range(len(tuplelist))]
-    plt.scatter(x, y, c=c, cmap='inferno', s=150)
+    x, y = np.asarray(tuplelist)[:,x_id], np.asarray(tuplelist)[:,y_id]
+    c = np.asanyarray(tuplelist)[:,val_id]
+    #c = [i for i in range(len(tuplelist))]
 
-def scatterOverImg(sc_x, sc_y, sc_pts, im_x, im_y, im_pts,
-                   sc_cbar_label=''):
-    fig, ax = plt.subplots()
-    img = imshow(im_pts, ax=ax, x_axis=im_x, y_axis=im_y,
-                 return_fig=True, cbar=False)
-    sc = ax.scatter(sc_x, sc_y, c=sc_pts, cmap='plasma', edgecolor='black', s=100, alpha=0.6)
-    cbar_sc = plt.colorbar(sc, ax=ax)
-    cbar_sc.set_label(sc_cbar_label)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    sc = ax.scatter(x, y, c=c, cmap='inferno', s=150)
+    ax.grid(True)
+    cbar = plt.colorbar(sc, ax=ax, label='T1 (s)')
     plt.show()
 
 

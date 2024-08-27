@@ -15,14 +15,18 @@ from . import utils as uu
 #### file
 def fileIn(paths: str|List[str],
            contains: str|List[str] = '',
-           full_path=True):
+           full_path=True,
+           verbose=False):
     """ List all files in the directory(/ies).
     """
     files = []
     paths = uu.ensureList(paths)
     contains = uu.ensureList(contains)
-    
-    for path in paths:
+
+    for i, path in enumerate(paths):
+        if verbose:
+            print(f"Looking in: {path} ({i+1}/{len(paths)})")
+            
         ls = os.listdir(path)
         ls_full = [os.path.join(path, f) for f in ls]
         files_in_p = [f_or_d for f_or_d in ls_full if os.path.isfile(f_or_d)]
@@ -43,7 +47,7 @@ def fileIn(paths: str|List[str],
 
 #### loading/saving from/to npz format
 
-def loadNpz(name):
+def loadNpz(name, custom_dict=True):
     """ Returns a dictionnary build from the npzfile.
     if saveNpz was used, the return should be:
         {'array': array(),
@@ -60,6 +64,9 @@ def loadNpz(name):
             ret[key] = python_obj
         except ValueError:
             ret[key] = obj
+   
+    if custom_dict:
+        return uu.customDict(ret)
     return ret
 
 def _makeDateFolder(path):

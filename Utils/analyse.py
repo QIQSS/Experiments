@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 
 from typing import Literal
 
+from . import plot as up
 #### new array
 
 
@@ -90,7 +91,6 @@ def gaussian(arr, sigma=20, **kwargs):
  
 def gaussianlbl(image, sigma=20, **kwargs):
     """ gaussian line by line """
-    image = np.asarray(image)
     return ndimage.gaussian_filter1d(image, sigma, axis=1, **kwargs)
 
 
@@ -111,14 +111,18 @@ def rSquared(y_true, y_pred):
 
 def histogram(arr, bins=100, 
               return_type: Literal['all', 'hist'] = 'hist',
+              show_plot=False,
               **kwargs):
     """
     return_type: hist or all: x, hist
     """
     arr = np.asarray(arr).flatten()
     hist, bin_list = np.histogram(arr, bins, **kwargs)
+    
+    x = (bin_list[:-1] + bin_list[1:]) / 2
+    if show_plot:
+        up.qplot(hist, x)
     if return_type == 'all':
-        x = (bin_list[:-1] + bin_list[1:]) / 2
         return x, hist
     else:
         return hist
@@ -143,27 +147,6 @@ def classify(image, threshold, inverse=False):
     int_image = np.array(bool_image, dtype=int)
     return int_image
 
-def classifyWithDirection(array1d, threshold, tolerance_percent,
-                          inverse=False):
-    """"""""
-    array1d = np.array(array1d)
-    
-    # Calculate tolerance factor and bounds
-    tolerance_factor = tolerance_percent / 100
-    lower_bound = threshold * (1 - tolerance_factor)
-    upper_bound = threshold * (1 + tolerance_factor)
-    
-    # Initialize the output classification array
-    int_array = np.zeros(array1d.shape, dtype=int)
-    
-    print(lower_bound, upper_bound)
-    # Classify each element
-    int_array[array1d < lower_bound] = -1 if not inverse else 1
-    int_array[array1d > upper_bound] = 1 if not inverse else -1
-    # Elements within bounds are already set to 0 by default initialization
-    
-    return int_array
-
 def allequal(arr, val):
     return np.all(arr == val) 
 
@@ -174,9 +157,51 @@ def countHighLow(arr1d, high=1, low=0):
     h_prop = h_count / arr1d.size
     l_prop = l_count / arr1d.size
     return dict(high=h_prop, low=l_prop, high_count=h_count, low_count=l_count)
-    
 
-def classTraces(arr2d, timelist):
+def cleanTrace(trace, tolerance, verbose=False, show_plot=False):
+    """ repllace event with less points than tolerance 
+    by zeros (ones) if event is ones (zeros).
+    trace is a 1d array with only zeros and ones.
+    """
+    event_indexes = np.where(np.diff(trace) != 0)[0]+1
+    event_indexes = np.concatenate(([0], event_indexes, [len(trace)]))
+
+    event_lengths = np.diff(event_indexes)
+    valid_events = event_lengths >= tolerance
+    
+    
+    cleaned_trace = np.copy(trace)
+    
+    for start, end, valid in zip(event_indexes[:-1], event_indexes[1:], valid_events):
+        if not valid:
+            cleaned_trace[start:end] = 0 if cleaned_trace[start]==1 else 1
+    
+    if verbose:
+        total_events = len(event_lengths)
+        num_valid_events = np.sum(valid_events)
+        num_removed_events = total_events - num_valid_events
+        print(f"Total events: {total_events}")
+        print(f"Valid events: {num_valid_events}")
+        print(f"Events removed: {num_removed_events}")
+        print(f"Tolerance: {tolerance}")
+       
+    if show_plot:
+        # Plot the original and cleaned traces
+        plt.figure(figsize=(12, 6))
+        plt.subplot(2, 1, 1)
+        plt.plot(trace, label='Original Trace', color='blue')
+        plt.title('Original Trace');plt.xlabel('Index');plt.ylabel('Value')
+        plt.legend()
+        plt.subplot(2, 1, 2)
+        plt.plot(cleaned_trace, label='Cleaned Trace', color='green')
+        plt.title('Cleaned Trace');plt.xlabel('Index');plt.ylabel('Value')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+        
+    return np.array(cleaned_trace)
+
+def classTraces(arr2d, timelist, blip_tolerance=0):
     """ wip
     timelist same size as arr2d.shape[1]
     """
@@ -184,33 +209,35 @@ def classTraces(arr2d, timelist):
          'high_fall_time':[]}
     
     for i, trace in enumerate(arr2d):
-            if not np.any(trace): # 0000000
-                d['low'] += 1
-                d['low_ids'].append(i)
-                continue
-                        
-            if np.all(trace): # 1111111
+        trace = cleanTrace(trace, blip_tolerance)
+        
+        if not np.any(trace): # 0000000
+            d['low'] += 1
+            d['low_ids'].append(i)
+            continue
+                    
+        if np.all(trace): # 1111111
+            d['high'] += 1
+            d['high_ids'].append(i)
+            d['high_fall_time'].append(timelist[-1])
+            continue
+        
+        event_index = np.where(np.diff(trace) == -1)[0]
+        if len(event_index) == 1:
+            event_index = event_index[0]
+            if allequal(trace[:event_index + 1], 1) and \
+                allequal(trace[event_index + 1:], 0): # all ones then all zeros
+                    
                 d['high'] += 1
                 d['high_ids'].append(i)
-                d['high_fall_time'].append(timelist[-1])
+                d['high_fall_time'].append(timelist[event_index])
                 continue
-            
-            event_index = np.where(np.diff(trace) == -1)[0]
-            if len(event_index) == 1:
-                event_index = event_index[0]
-                if allequal(trace[:event_index + 1], 1) and \
-                    allequal(trace[event_index + 1:], 0): # all ones then all zeros
-                        
-                    d['high'] += 1
-                    d['high_ids'].append(i)
-                    d['high_fall_time'].append(timelist[event_index])
-                    continue
+
     
-        
-            #if len(event_index) != 1: # more than one event
-            d['exclude'] += 1
-            d['exclude_ids'].append(i)
-            continue
+        #if len(event_index) != 1: # more than one event
+        d['exclude'] += 1
+        d['exclude_ids'].append(i)
+        continue
     return d
 
 def findClassifyingThreshold(double_gaussian_parameters,
@@ -239,6 +266,7 @@ def findPeaks(points, show_plot=False, **kwargs):
         for peak in peaks:
             plt.text(peak, points[peak], f'({peak}, {points[peak]:.2f})', 
                      ha='center', va='bottom', color='red', fontsize=9)
+        plt.grid()
         plt.show()
     return peaks, properties
 
@@ -257,11 +285,12 @@ def f_doubleGaussian(x, sigma1, sigma2, mu1=0., mu2=0., A1=3.5, A2=3.5):
     g2 = fit_functions.gaussian(x, sigma2, mu2, A2)
     return g1+g2
 
-def f_expDecay(x, tau, a=1., b=0., c=0.):
-    return a*np.exp(-(x+b)/tau)+c
+def f_expDecay(x, tau, a=1., c=0.):
+    return a*np.exp(-x/tau)+c
 
-def ajustementDeCourbe(function, x, y, p0=[], threshold=0, 
+def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
                        verbose=False, show_plot=False,
+                       plot_title='',
                        inspect=False):
     """ do a fit, optimize: y = function(x, *p0)
     can give a list of p0 to try them all. it will take the best one.
@@ -320,27 +349,45 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
         plt.text(0.05, 0.95, f'Fit parameters:\n{param_text}', 
                  transform=plt.gca().transAxes, fontsize=12, verticalalignment='top',
                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-        
+        plt.title(plot_title)
         plt.legend()
         plt.show()
         
     return best_params
-    
-def fitDoubleGaussian(points, x, p0=None, p0_list=[], **kwargs):
-    delta = meandiff(x)
-    p0_list = p0_list[:]
-    p0_list += [
-        [10, 10, x[0], x[-1], np.max(points),  np.max(points) / 2, 1000],
-        [10, 10, np.mean(x)+10*delta, np.mean(x)-10*delta, np.max(points),  np.max(points) / 2, 1000],
-        [1, 1, x[20], x[-20], np.max(points),  np.max(points), 1000],
-        [1, 1.1, x[20], x[-20], np.max(points),  np.max(points)/4, 1000],
-    ]
-    if p0 is not None: p0_list = [p0]
-    
-    params = ajustementDeCourbe(f_doubleGaussian, x, points, p0_list, **kwargs)
 
-    return params
+def fitExpDecayLinear(x, y, verbose=False, show_plot=False, text=''):
+    """ fit y = Ae^(-t/tau)
+    but with ln(y) = len(A) - 1/tau * t
+             lny   =   c     + m * t
+    """
+    lny = np.log(y)
+    m, c = np.polyfit(x, lny, 1)
+    A = np.exp(c)
+    tau = -1/m
 
+    if verbose:
+        print(f"Linear fit results:")
+        print(f"  m: {m}")
+        print(f"  c: {c}")
+        print(f"  A: {A}")
+        print(f"  tau: {tau}")
+    
+    # Plotting if show_plot is enabled
+    if show_plot:
+        plt.scatter(x, y, label='Data', color='blue')
+
+        fitted_y = A * np.exp(-x / tau)
+        plt.plot(x, fitted_y, label=f'Fitted Curve: A*e^(-x/tau)\nA={A:.2f}, tau={tau:.2f}', color='red')
+
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.legend()
+        plt.title(text)
+        plt.grid(True)
+        plt.show()
+    
+    return A, tau
+    
 #### mesures
 
 def gen2dTraceSweep(x_start, x_stop, y_start, y_stop, nbpts):
