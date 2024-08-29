@@ -25,7 +25,8 @@ import matplotlib
 
 # %% PIPELINE
 # t1: -1 awgoverrange, -2 peaks error, -3 not enough counted trace, -4 exp fit error
-def pl(file, class_inverse=True):
+
+def pl(file, class_inverse=True, plot=False):
     name = file.split('-')[-1]
     load_dict = uf.loadNpz(file)
     metadata, raw = load_dict.get('metadata'), load_dict.get('array')
@@ -45,8 +46,9 @@ def pl(file, class_inverse=True):
     # filter and stuff
     filt = ua.gaussianlbl(arr, 40)
     bins, hist = ua.histogram(filt, return_type='all')
-    peaks, prop = ua.findPeaks(hist, show_plot=False, prominence=max(hist)*0.01)
-    qplot(hist, bins)
+    peaks, prop = ua.findPeaks(hist, show_plot=plot, prominence=max(hist)*0.03)
+    if plot: imshow(filt)
+    if plot: qplot(hist, bins, vline=ua.multiget(peaks, bins))
 
     if len(peaks) != 2: return -2, p1, p2
 
@@ -56,7 +58,7 @@ def pl(file, class_inverse=True):
     clas = ua.classify(filt, th, inverse=class_inverse)
     clas_clean = np.apply_along_axis(ua.cleanTrace, arr=clas, axis=1, tolerance=60)
     #up.plotSideBySide(raw, arr, filt, clas, clas_clean, link_all=True)
-    #up.plotDoubleGaussian(bins, *dg_params, hist, th, title=f"{file.split('-')[-1]}")
+    if plot: up.plotDoubleGaussian(bins, *dg_params, hist, th, title=f"{file.split('-')[-1]}")
 
     stats_dict = ua.classTraces(clas_clean, timelist)
     counted_trace = stats_dict.get('low') + stats_dict.get('high')
@@ -67,25 +69,24 @@ def pl(file, class_inverse=True):
 
     points = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
     #A, t1 = ua.fitExpDecayLinear(timelist, points, verbose=True, show_plot=True, text=file)
-    t1, A = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points, show_plot=False, p0=[0.006, 0.2], plot_title=name)
-
+    t1, A = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points, show_plot=plot, p0=[0.006, 0.2], plot_title=name)
+    
     return t1, p1, p2
 
-# %% 20240821-23 map T1 a B=.8
+# %% 20240821-23 map T1 a B=.8, 'oneshot'
 days = [LOG_PATH + d for d in ['20240821', '20240822', '20240823']]
 files = sorted(uf.fileIn(days, contains='mesureT1_oneshot', verbose=True))
 resoneshot = [pl(f, False) for f in tqdm(files)]
-#uf.saveToNpz(LOG_PATH+'20240821', 'resoneshot', resoneshot)
+#uf.saveToNpz(LOG_PATH+'20240821', 'resoneshot', resoneshot, make_date_folder=False)re
+map_ = uf.loadNpz(LOG_PATH+'20240821'+'/20240821-225919-transition_B=800mT_retour.npz')
 # %%% load
-resoneshot = uf.loadNpz('/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/20240821/20240826/20240826-183809-resoneshot.npz').get('array')
+resoneshot = uf.loadNpz('/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/20240821/resoneshot.npz').get('array')
 # %%% clean
 resoneshot_clean = [(0, t[1], t[2]) if t[0] < 0 else t for t in resoneshot]
 resoneshot_clean = [(0, t[1], t[2]) if t[0] > 1.0 else t for t in resoneshot_clean]
 resoneshot_arr = np.asanyarray(resoneshot_clean)
 # np.argmax(resoneshot_arr[:,0])
-#%% plot
-#map_ = uf.loadNpz(LOG_PATH+'20240821'+'/20240821-225919-transition_B=800mT_retour.npz')
-
+# %%% plot
 kwargs = dict(
               x_axis=map_.rget('x_axis'),
               y_axis=map_.rget('y_axis'),
@@ -104,6 +105,7 @@ kwargs = dict(
               return_type='win')
 
 imshow(map_.get('array'), **kwargs)
+
 
 # %% 20240821 T1(B)
 files100 = sorted(uf.fileIn(LOG_PATH+'20240821', contains='mesureT1_bz=100m'))
@@ -138,8 +140,8 @@ ress = [res100_clean, res500_clean, res800_clean, res1000_clean, res1200_clean]
 # %%% plot imgs
 for tr, res, text in zip(trs, ress, texts):
     kwargs = dict(
-                  x_axis=uu.recursiveDictGet(tr, 'x_axis'),
-                  y_axis=uu.recursiveDictGet(tr, 'y_axis'),
+                  x_axis=tr.rget('x_axis'),
+                  y_axis=tr.rget('y_axis'),
                   x_label='P2 (V)',
                   y_label='P1 (V)',
                   cmap='viridis',
@@ -155,12 +157,16 @@ for tr, res, text in zip(trs, ress, texts):
 
 
 # %%% plot traces
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=[1,1])
+plt.rcParams.update({'font.size': 15})
+cmap = matplotlib.cm.get_cmap('Blues')
+num_lines = len(ress)+1
 
-for res, text in zip(ress, texts):
+for i, (res, text) in enumerate(zip(ress, texts)):
     t1s = np.asarray(res)[:, 0]
+    color = cmap((i+1) / (num_lines - 1))
     ax.plot(np.linspace(0, len(t1s), len(t1s)), t1s,
-            label=f"{text} mT", marker='o')
+            label=f"{text} mT", marker='o', color=color)
 
 ax.set_xlabel('detuning $\epsilon$')
 ax.set_ylabel('T1 (s)')
@@ -168,303 +174,90 @@ ax.set_xticks([])
 ax.legend()
 plt.show()
 
-# %% 20240820 T1 zone 1 et 2
-days = ['20240816', '20240817', '20240818', '20240819']
-files = sorted(uf.fileIn([LOG_PATH+day for day in days],
-                         contains=('mesureT1_we', 'mesureT1_2_we',
-                                   'mesureT1_z1', 'mesureT1_z2')))
+# %%% plot max(traces)
+maxi = [1/np.max(np.asarray(res)[:,0]) for res in ress]
+maxi[0] = 0
+plt.plot(np.array([100, 500, 800, 1000, 1200])*1e-3, maxi, marker='o', linestyle='--')
+plt.ylabel(r'$\frac{1}{T_1}$      ', rotation=0, fontsize=20)
+plt.xlabel('Bz (T)')
+plt.grid()
 
-# %%% compute
-t1p1p2_list = [pl(f) for f in alive_it(files, spinner=None)]
+# %% 20240820 map T1 a B=.8, 'we' et zone 1 2 3
+days = [LOG_PATH+d for d in ['20240816', '20240817', '20240818', '20240819', '20240820', '20240821']]
+fileswe = sorted(uf.fileIn(days, contains=('mesureT1_we', 'mesureT1_2_we')))
+filesz123 = sorted(uf.fileIn(days, contains=('mesureT1_z')))
 
-# %%% post post process
+reswe = [uu.try_(lambda: pl(f), (-10, np.nan, np.nan)) for f in tqdm(fileswe)]
+resz123 = [uu.try_(lambda: pl(f), (-10, np.nan, np.nan)) for f in tqdm(filesz123)]
+#uf.saveToNpz(LOG_PATH+'20240821', 'reswe', reswe, make_date_folder=False)
+#uf.saveToNpz(LOG_PATH+'20240821', 'resz123', resz123, make_date_folder=False)
 
-overrange_list = [data for data in t1p1p2_list if data[0] == -2]
-fiterror_list = [data for data in t1p1p2_list if data[0] == -1 or data[0] == -4]
-zeros_list = [data for data in t1p1p2_list if data[0] == 0]
-t1p1p2_clean = [data[:3]  for data in t1p1p2_list \
-                  if data not in overrange_list and \
-                     data not in zeros_list and \
-                     data not in fiterror_list ]#and \
-                     #data[0] < 0.028]
-
-# %%% plot
-l = t1p1p2_clean
-pts, y, x = np.asarray(l)[:, 0].astype(float), np.asarray(l)[:, 1].astype(float), np.asarray(l)[:, 2].astype(float)
-
-fig = plt.figure()
-ax = fig.add_subplot(111)
-sc = ax.scatter(x, y, c=pts, cmap='inferno', s=150)
-ax.grid(True)
-ax.set_xlabel('P2 read (V)')
-ax.set_ylabel('P1 read (V)')
-
-#for i, txt in enumerate(range(len(pts))):
-#    ax.annotate(txt, (x[i], y[i]))
-
-cbar = plt.colorbar(sc, ax=ax, label='T1 (s)')
-plt.show()
-
-# %%% superpose transition map:
+# %%% load 
 tr_map = uf.loadNpz(LOG_PATH+'20240820/20240820-105251_vm_transition.npz')
-tr_array = tr_map.get('array')
-x_axis, y_axis = tr_map['metadata']['imshow_kwargs']['x_axis'], tr_map['metadata']['imshow_kwargs']['y_axis']
+reswe = uf.loadNpz(LOG_PATH+'20240821/20240827-162036-reswe.npz').array
+resz123 = uf.loadNpz(LOG_PATH+'20240821/20240827-145634-resz123.npz').array
 
-up.scatterOverImg(x, y, pts, x_axis, y_axis, tr_array)
+# %%% exclude resz123
+resz123_exclude = [132, 348, 117, 317, 333, 301, 349, 350, 286, 6, 5, 7, 318, 302, 334, ]
+resz123_clean = [(-10, np.nan, np.nan) if t[0]==-10 else t for t in resz123]
+resz123_clean = [(0, t[1], t[2]) if t[0] < 0 else t for t in resz123_clean]
+resz123_clean = [(0, t[1], t[2]) if i in resz123_exclude else t for i, t in enumerate(resz123_clean)]
+#pl(filesz123[ic(np.argmax(np.asarray(resz123_clean)[:,0]))], plot=True)
+# %%% exclude reswe
+reswe_exclude = [431, 487, 430, 433, 460, 448, 490, 463, 445, 451, 484, 466, 472, 478, 475, 35, 457, 469, 49, 454]
+fileswe_doubleid = [val for i in range(28) for val in (0 + i * 15, 1 + i * 15)] # overlaping points
+reswe_clean = [(-10, np.nan, np.nan) if idx in fileswe_doubleid else reswe[idx] for idx in range(len(reswe))]
+reswe_clean = [(0, t[1], t[2]) if t[0] < 0 else t for t in reswe_clean]
+reswe_clean = [(0, t[1], t[2]) if i in reswe_exclude else t for i, t in enumerate(reswe_clean)]
+#pl(fileswe[ic(np.argmax(np.asarray(reswe_clean)[:,0]))], plot=True)
 
-# %% 20240819 T1 weekend
-#!!! temps load/empty différent -> change cut_id_start
-days = ['20240816', '20240817', '20240818']
-files = uf.fileIn([LOG_PATH+day for day in days])
-files = [fname for fname in sorted(files) if 'mesureT1_we' in fname]
+# %%% plot superpose
+res = reswe_clean + resz123_clean
+kwargs = dict(
+              x_axis=tr_map.rget('x_axis'), y_axis=tr_map.rget('y_axis'),
+              x_label='P2 (V)', y_label='P1 (V)',
+              cmap='viridis', cbar=False, cbar_label='lockin',
+              scatter_points=[(r[0]*1e3, r[1], r[2]) for r in res],
+              scatter_points_label='none',
+              scatter_cmap='magma_r',
+              scatter_cbar_label='T1 (ms)',
+              scatter_cbar=True,
+              scatter_size=60,
+              scatter_alpha=0.8,
+              figsize=[5,4],
+              return_type='qt')
 
-# 2eme batch
-files2 = uf.fileIn(LOG_PATH+'20240818')
-files2 = [fname for fname in sorted(files2) if 'mesureT1_2_we' in fname]
-files2 += uf.fileIn(LOG_PATH+'20240819')
-files2 = sorted(files2)
-
-sw_points = ua.genTrapezoidSweep(0.550, 0.557, 28, 1.03, 1.044, 1.04, 1.054, 15)
-sw_points2 = ua.genTrapezoidSweep(0.550, 0.557, 28, 1.029, 1.031, 1.039, 1.041, 3)
-# %%% postprocess
-# t1: -2 awgoverrange, -1 threshold error, 0 exp fit error
-def pl(file=files[i:=44]):
-    load_dict = uf.loadNpz(file)
-    metadata, raw = load_dict.get('metadata'), load_dict.get('array')
-
-    # take from metadata
-    p1, p2 = metadata.get('p1'), metadata.get('p2')
-    timelist_raw = np.linspace(0, metadata.get('imshow_kwargs').get('x_axis'), len(raw[0]))
-
-    if metadata.get('awg_overrange'):
-        return -2, p1, p2
-        print('overrange')
-
-    # cut
-    cut_id_start = ua.findNearest(timelist_raw, 0.0018, 'id') # remove beginning of the pulse
-    cut_id_stop = -2000
-    arr = raw[:, cut_id_start:cut_id_stop]
-    timelist = timelist_raw[cut_id_start:cut_id_stop]
-    timelist = np.asarray(timelist)-timelist[0]
-
-    # filter and stuff
-    filt = ua.gaussianLineByLine(arr, 30)
-    x, hist = ua.histogram(filt, get_x_axis=True)
-    params = ua.ajustementDeCourbe(ua.f_doubleGaussian, x, hist,
-                p0 = [
-                       [0.1, 0.5, x[20], x[-20], np.max(hist)/8, np.max(hist)/8],
-                       [0.1, 0.5, x[10], x[-10], np.max(hist)/8, np.max(hist)/8],
-                       [0.5, 0.5, np.mean(x), np.mean(x), np.max(hist)/8, np.max(hist)/8],
-                     ],
-                inspect=False, show_plot=False, verbose=True,)
-    th = ua.findClassifyingThreshold(params)
-    #up.plotDoubleGaussian(x, *params, hist, th, title=f"{i}")
-    clas = ua.classify(filt, th, inverse=True)
-    #up.imshowSideBySide(arr, filt, clas, x_axis=timelist)
-
-    stats_dict = ua.classTraces(clas, timelist)
-    counted_trace = stats_dict.get('low') + stats_dict.get('high')
-
-    if counted_trace != 0:
-        points = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
-        #qplot(timelist, stats)
-        #fit_res = fit.fitplot(ua.f_exp, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0])
-        #fit_res = fit.fitcurve(ua.f_exp, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0])
-        exp_decay = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points)
-        t1 = exp_decay[0]
-    else:
-        print('no high..., t1=0')
-        t1 = 0
-
-    #plt.show()
-    #wait(1)
-
-    return t1, p1, p2
-
-# %%% compute
-p1_list, p2_list, t1_list = [], [], []
-
-for i, f in tqdm(enumerate(files), total=len(files)):
-    print(i)
-    t1, p1, p2 = pl(f)
-    p1_list.append(p1)
-    p2_list.append(p2)
-    t1_list.append(t1)
-
-# %%% post post processing
-t1_p1_p2_list = [(t1, p1, p2) for t1, p1, p2 in zip(t1_list, p1_list, p2_list)]
-overrange_list = [(t1, p1, p2) for t1, p1, p2 in zip(t1_list, p1_list, p2_list) if t1 == -2]
-zeros_list = [(t1, p1, p2)  for t1, p1, p2 in zip(t1_list, p1_list, p2_list) if t1 == 0]
-t1_p1_p2_clean = [(t1, p1, p2)  for t1, p1, p2 in zip(t1_list, p1_list, p2_list) \
-                  if (t1, p1, p2) not in overrange_list and \
-                      (t1, p1, p2) not in zeros_list and \
-                      #(t1, p1, p2) not in t1_p1_p2_zeros and \
-                          t1 <0.35]
-
-#t1_list_no_abb = [t1 if t1 < 1 and t1>0 else np.nan for t1 in t1_list ]
-
-# %%% plot
-l = t1_p1_p2_clean
-to_plot = np.asarray(l)[:, 0], np.asarray(l)[:, 1], np.asarray(l)[:, 2]
-
-fig = plt.figure()
-ax = fig.add_subplot(111)
-colors = np.divide(1, to_plot[0], out=np.zeros_like(to_plot[0]), where=to_plot[0]!=0)
-sc = ax.scatter(to_plot[2], to_plot[1], c=to_plot[0], cmap='inferno', s=150)  # Use the modified colors array
-ax.grid(True)
-ax.set_xlabel('P2 read (V)')
-ax.set_ylabel('P1 read (V)')
-
-cbar = plt.colorbar(sc, ax=ax, label='1/T1 (s)', cmap='viridis')
-plt.show()
+imshow(tr_map.get('array'), **kwargs)
 
 
 # %% 20240816 T1 map 2, meme point.
-files = uf.fileIn(LOG_PATH+'20240816')
-files = [file for file in files if 'mesureT1_pm' in file]
+files = uf.fileIn(LOG_PATH+'20240816', contains=('mesureT1_pm'))
 points = ua.genTrapezoidSweep(0.551, 0.556, 6, 1.030, 1.044, 1.04, 1.05, 3)
-
-# %%% postprocess
-def pl(file=files[0]):
-    load_dict = uf.loadNpz(file)
-    metadata, raw = load_dict.get('metadata'), load_dict.get('array')
-    if metadata.get('awg_overrange'): print('overrange')
-
-    # take from metadata
-    p1, p2 = metadata.get('p1'), metadata.get('p2')
-    timelist_raw = np.linspace(0, metadata.get('imshow_kwargs').get('x_axis'), len(raw[0]))
-
-    # cut
-    cut_id_start = ua.findNearest(timelist_raw, 0.006, 'id') # remove beginning of the pulse
-    cut_id_stop = -4
-    arr = raw[:, cut_id_start:cut_id_stop]
-    timelist = timelist_raw[cut_id_start:cut_id_stop]
-    timelist = np.asarray(timelist)-timelist[0]
-
-    # filter and stuff
-    filt = ua.gaussianLineByLine(arr, 20)
-    th = ua.findClassifyingThreshold(filt, show_plot=False)
-    clas = ua.classify(filt, th, inverse=True)
-    #imshow(clas, title=f"Read: p1={p1}, p2={p2}")
-
-
-    stats_dict = ua.classTraces(clas, timelist)
-
-    counted_trace = stats_dict.get('low') + stats_dict.get('high')
-    if counted_trace != 0:
-        points = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
-        #qplot(timelist, stats)
-        fit_res = fit.fitplot(ua.f_exp, timelist, points, p0=[298.7e-6,295e-3,102.6e-6,0])
-        #fit_res = fit.fitcurve(analyse.f_exp, timelist, stats, p0=[298.7e-6,295e-3,102.6e-6,0])
-        t1 = fit_res[0][0]
-    else:
-        t1 = 0
-
-    wait(1)
-    return t1, p1, p2, points, timelist, fit_res
-
-# %%% compute
-p1_list, p2_list, t1_list, points_list= [], [], [], []
-fit_res_list = []
-timelist = None
-for f in alive_it(files):
-    t1, p1, p2, points, tl, fit_res = pl(f)
-    p1_list.append(p1)
-    p2_list.append(p2)
-    t1_list.append(t1)
-    points_list.append(points)
-    fit_res_list.append(fit_res)
-    timelist=  tl
-# %%% std, error
-params_list = np.asarray([fr[0] for fr in fit_res_list])
-p_avg = np.average(params_list, axis=0)
-p_std = np.std(params_list, axis=0)
-p_err = p_std/np.sqrt(len(params_list))
+res = [uu.try_(lambda: pl(f), (-10, np.nan, np.nan)) for f in tqdm(files)]
 # %%% plot
-
-plt.figure(figsize=(5,4))
-alphas = np.linspace(0.1, 0.9, len(points_list))
-colors = matplotlib.colormaps['Blues'](np.linspace(0, 1, len(points_list)))
-
-plt.rcParams.update({'text.usetex': True})
-import matplotlib as mpl
-mpl.rcParams.update(mpl.rcParamsDefault)
-#a*np.exp(-(x+b)/tau)+c
-lbl = r'$y=ae^{\frac{-(t+b)}{T_1}}+c$'
-tau, a, b, c = p_avg
-tau_err, a_err, b_err, c_err = p_err
-lbl = (r'$y = a e^{\frac{-(t+b)}{T_1}} + c$' +
-       f'\n$T_1= {tau:.4f} \pm {tau_err:.4f}$, '
-       f'\n$a = {a:.4f} \pm {a_err:.4f}$'
-       f'\n$b = {b:.4f} \pm {b_err:.4f}$'
-       f'\n$c = {c:.4f} \pm {c_err:.4f}$')
-
-plt.plot(timelist, ua.f_exp(timelist, *p_avg), color='red', label=lbl)
-for points, alpha, c in zip(points_list, alphas, colors):
-    plt.plot(timelist, points, alpha=alpha, linewidth=0.5, color=c)
-
-plt.xlabel('time (s)')
-plt.ylabel('$P_{high}$')
-#plt.tick_params(axis='both', which='major', labelsize=12)
-#plt.legend(prop={'size': 50})
-plt.legend(prop = { "size": 60 }, loc ="upper right")  # Adjust the fontsize as needed
-
-plt.grid()
-plt.legend()
-plt.show()
+plt.scatter(ua.linlen(res), np.asarray(res)[:,0]*1e3)
+plt.ylabel('T1 (ms)')
+# %%% std, error
+t1s = np.asarray([d[0] for d in res])
+p_avg = np.average(t1s, axis=0)
+p_std = np.std(t1s, axis=0)
+p_err = p_std/np.sqrt(len(t1s))
 
 # %% 20240815 T1 map
 # !!!! certains points sont au-delà de la range de l'awg
 
-files = uf.fileIn(LOG_PATH+'20240815', full_path=True)
-files = [file for file in files if 'mesureT1' in file]
+files = uf.fileIn(LOG_PATH+'20240815', contains='mesureT1')
 
 p1_list= np.linspace(1.035, 1.05, 10)
 p2_list = np.linspace(0.550, 0.558, 10)
 
-# %%% postprocess pipeline
-def pl(file=files[1]):
-    load_dict = uf.loadNpz(file)
-    metadata, raw = load_dict.get('metadata'), load_dict.get('array')
-
-    p1, p2 = metadata.get('p1'), metadata.get('p2')
-    timelist = np.linspace(0, metadata.get('imshow_kwargs').get('x_axis'), len(raw[0]))
-
-    cut_id_start = ua.findNearest(timelist, 0.006, 'id') # remove beginning of the pulse
-    cut_id_stop = -200
-    arr = raw[:, cut_id_start:cut_id_stop]
-    timelist = timelist[cut_id_start:cut_id_stop]
-    timelist = np.asarray(timelist)-timelist[0]
-
-    filt = ua.gaussianLineByLine(arr, 20)
-    th = ua.findClassifyingThreshold(filt, show_plot=False)
-    clas = ua.classify(filt, th, inverse=True)
-    #imshow(clas, title=f"Read: p1={p1}, p2={p2}")
-
-
-    stats_dict = ua.classTraces(clas, timelist)
-
-    counted_trace = stats_dict.get('low') + stats_dict.get('high')
-    if counted_trace != 0:
-        stats = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
-        #qplot(timelist, stats)
-        fit_res = fit.fitplot(ua.f_exp, timelist, stats, p0=[298.7e-6,295e-3,102.6e-6,0])
-        #fit_res = fit.fitcurve(analyse.f_exp, timelist, stats, p0=[298.7e-6,295e-3,102.6e-6,0])
-        t1 = fit_res[0][0]
-    else:
-        t1 = 0
-
-    wait(.5)
-    return t1, p1, p2
 # %%% build t1 map
-t1_list = [] # list of tuple: [((p1,p2), t1), ]
-for f in alive_it(files):
-    t1, p1, p2 = pl(f)
-    t1_list.append(((p1, p2), t1))
+t1_list = [pl(f, class_inverse=True) for f in tqdm(files)]
+t1s = [(0, t[1], t[2]) if t[0] < 0 else t for t in t1_list]
 
-p1_values = [item[0][0] for item in t1_list]
-p2_values = [item[0][1] for item in t1_list]
-t1_values = [item[1] for item in t1_list]
+p1_values = [item[2] for item in t1s]
+p2_values = [item[1] for item in t1s]
+t1_values = [item[0] for item in t1s]
 
 # %%% plot
 fig = plt.figure()
@@ -506,37 +299,3 @@ fitres = fit.fitplot(ua.f_exp, timelist, stats, p0=[10e-3,1,0,0])
 plt.figure()
 plt.plot(timelist, ua.f_exp(timelist, *fitres[0]), label='fit', color='red')
 plt.plot(timelist, stats)
-
-# %% 20240814 T1 varying load time (mauvaise méthode) -
-# %%% load
-path = LOG_PATH+'20240814'
-path2 = LOG_PATH+'20240815'
-files = uf.fileIn([path, path2])
-extractTload = lambda metadata: float(metadata.get('pulseP1').split('duration')[3][1:].split(')')[0])
-def loadOne(file):
-    d = uf.load.loadNpz(file)
-    return (extractTload(d.get('metadata')), d.get('array'))
-loads = [loadOne(file) for file in files]#.sort(key=lambda t: t[0]) # [(t_load, data), ...]
-acq_time = 0.007
-
-# %%% compute
-t_readout = 0.002
-
-def onepoint(arr, i):
-    print(i)
-    """ filter, find threshold, classify, count high/low """
-    arr = arr[:, :-5]
-    id_readout = ua.findNearest(np.linspace(0, acq_time, loads[0][1].shape[1]), t_readout, 'id')
-
-    arr = ua.gaussian(arr, sigma=10)
-
-    th = ua.findClassifyingThreshold(arr, show_plot=False)
-    arr_cls = ua.classify(arr, th)
-    proba = ua.countHighLow(arr_cls[:, id_readout])
-    return proba
-
-result = [(t_load, onepoint(arr, i).get('low')) for i, (t_load, arr) in enumerate(loads[:414])] # [(t_load, proba)]
-res = np.array(result[:408])
-qplot(res[:,0], res[:,1])
-
-# Pas la bonne mesure de T1 finalement.......

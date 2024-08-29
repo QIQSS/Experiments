@@ -1,7 +1,11 @@
+import numpy as np
 
 def ensureList(obj):
     if isinstance(obj, (tuple, list)):
         return obj
+    if isinstance(obj, np.ndarray):
+        if obj.ndim == 1:
+            return obj
     return [obj]
     
 def mergeDict(dict1, dict2):
@@ -10,17 +14,30 @@ def mergeDict(dict1, dict2):
     result.update(dict2)
     return result
 
+def try_(function_no_arg, fallback):
+    try:
+        return function_no_arg()
+    except Exception as e:
+        print(f"{e}")
+        return fallback
 
 class customDict(dict):
     """ custom version of a dictionnary
     
-    new method:
-        rget: recursive get, return first val with key in child dicts
+    new things:
+        method rget: recursive get, return first val with key in child dicts
         
+        keys as attributes: customDict.key -> customDict['key']
     """
     
     def __init__(self, *arg, **kw):
         super(customDict, self).__init__(*arg, **kw)
+        
+    def __getattr__(self, key):
+        return self[key]
+    
+    def __setattr__(self, key, value):
+        self[key] = value
 
     def rget(self, key, default=None):
         """ recursive get:

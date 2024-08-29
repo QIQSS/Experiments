@@ -21,7 +21,7 @@ COLORS = ['#029ac3', '#ffba1e', '#59a694', '#fe66ca', '#cd93f9']
 COLORS_D = ['#5b1d2c', '#c6e1ea', '#505c76', '#162067', '#070c20']
 
 
-#### BASIC PLOTS
+#### IMSHOW
 def _imshow_make_kwargs(
         array,
         show=True,
@@ -39,6 +39,7 @@ def _imshow_make_kwargs(
            randomize_cmap=False,
            
            scatter_points=None, # [(val, x, y), ... , ] 
+           scatter_points_label: Literal['none', 'id', 'val', 'both'] = 'none',
            scatter_size: int = 50,
            scatter_cbar: bool = False, 
            scatter_cmap: Literal['<mpl_cmap>'] = 'inferno',
@@ -47,7 +48,7 @@ def _imshow_make_kwargs(
            
            use_latex: bool = False,
            figsize: tuple = None,
-           return_type: Literal['none', 'fig', 'png', 'win'] = 'none',
+           return_type: Literal['none', 'fig', 'png', 'qt'] = 'none',
            **plot_kwargs):
     """ my custom imshow function.
     with easier axis extent: x_axis=, y_axis=.
@@ -197,18 +198,28 @@ def imshow(array, **kwargs):
         axy2.set_ylabel(kw['y_label2'])
 
     sc_pts = kw['scatter_points']
-    if sc_pts:
+    if sc_pts is not None:
         scatter_x = [pt[2] for pt in sc_pts]
         scatter_y = [pt[1] for pt in sc_pts]
         scatter_c = [pt[0] for pt in sc_pts]
+        #scatter_c = [i for i in range(len(sc_pts))]
         scatter = ax.scatter(scatter_x, scatter_y, c=scatter_c, s=kw['scatter_size'], cmap=kw['scatter_cmap'],
                              alpha=kw['scatter_alpha'])
+        
+        scatter_points_label = kw.get('scatter_points_label', 'none')
+        if scatter_points_label in ['id', 'both']:
+            for idx, (x, y) in enumerate(zip(scatter_x, scatter_y)):
+                ax.text(x, y, str(idx), fontsize=11, ha='right')
+        
+        if scatter_points_label in ['val', 'both']:
+            for (x, y, c) in zip(scatter_x, scatter_y, scatter_c):
+                ax.text(x, y, f'{c:.2f}', fontsize=11, ha='right')
 
         if scatter_cbar:
             fig.colorbar(scatter, label=kw['scatter_cbar_label'], ax=ax, cax=scbax)
             #cbax.set_title(kw['scatter_cbar_title'])
+            
     fig.tight_layout()
-    # modded fig
     fig = _modFig(fig)
 
     # saving
@@ -233,7 +244,7 @@ def imshow(array, **kwargs):
             return fig
         case 'png':
             return _figToPng(fig)
-        case 'win':
+        case 'qt':
             return uu.mplqt(fig)
         case 'none':
             return
@@ -306,7 +317,8 @@ def _modFig(fig):
     def figToClipboard():
         with io.BytesIO() as buffer:
             fig.savefig(buffer)
-            QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))
+            QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))    
+            print('Custom fig: image copied')
     def onKeyPress(event):
         if event.key == "ctrl+c":
             figToClipboard()
@@ -347,6 +359,37 @@ def imshowFromNpz(filename, return_dict=False, **new_kwargs):
     npzdict = uf.loadNpz(filename)
     imshowFromNpzDict(npzdict, **new_kwargs)
     if return_dict: return npzdict
+
+#### QPLOT
+def _qplot_make_kwargs(
+        array,
+        x_axis=None,
+        multi: bool = False, # if array = [trace1, ..., tracen] -> colormap
+        x_label='', y_label='',
+        x_axis2=None, x_label2='', y_axis2=None, y_label2='',
+        x_slice=(None,None), slice_by_val=False,
+        x_log=False, x_log2=False, y_log=False, y_log2=False,
+        
+        grid=True,
+        title='', 
+        text='', text_pos='dr', text_color='white',
+        
+        vline: list[int] = None, vline_style={},
+        
+        show = True,
+        save = False, save_fig=False, save_png=False, 
+        path='./', filename='', metadata={},
+        
+        cbar=True, cbar_label='', cbar_title='',
+        cmap: Literal['<mpl_cmap>', 'random'] = 'viridis',
+        randomize_cmap=False,
+        
+        use_latex: bool = False,
+        figsize: tuple = None,
+        return_type: Literal['none', 'fig', 'png', 'win'] = 'none',
+        **plot_kwargs):
+    return locals()
+
 
 def qplot(array, x_axis=None, show=True,
           save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
@@ -442,7 +485,7 @@ def qplot(array, x_axis=None, show=True,
         ax.set_yscale('log')
     if log_x:
         ax.set_xscale('log')
-    if vline:
+    if vline is not None:
         for vl in uu.ensureList(vline):
             ax.axvline(x=vl, linestyle=':', label=str(vline))
             
@@ -572,6 +615,7 @@ def plotDoubleGaussian(x, sigma1, sigma2, mu1, mu2, A1, A2, points=None,
         ax.axvline(x=vline, color=c4, linestyle=':', label=str(vline))
         fig.legend()
     ax.set_title(title)
+    plt.show()
     
     
 def plotSideBySide(*args, inline=False, link_all=False):

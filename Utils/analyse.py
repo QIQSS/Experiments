@@ -17,8 +17,10 @@ from . import plot as up
 #### new array
 
 
-def linlen(arr):
-    return np.linspace(0, len(arr), len(arr))
+def linlen(arr, end=None):
+    if end is None:
+        end = len(arr)
+    return np.linspace(0, end, len(arr))
 
 #### array handling
 
@@ -77,6 +79,9 @@ def sliceColumns(arr, start=None, stop=None, slice_by_val=False):
 def meandiff(a):
     return np.mean(np.diff(a))
 
+def multiget(arr, list_of_indexes):
+    return [axis[i] for i in list_of_indexes]
+        
 #### filters
 
 def fft(arr):
@@ -254,9 +259,10 @@ def findClassifyingThreshold(double_gaussian_parameters,
             th = result.x
     return th
 
-def findPeaks(points, show_plot=False, **kwargs):
+def findPeaks(points, show_plot=False, 
+              **scipy_kwargs):
     import scipy
-    peaks, properties = scipy.signal.find_peaks(points, **kwargs)
+    peaks, properties = scipy.signal.find_peaks(points, **scipy_kwargs)
     
     if show_plot:
         plt.figure(figsize=(10, 6))
@@ -270,6 +276,9 @@ def findPeaks(points, show_plot=False, **kwargs):
         plt.show()
     return peaks, properties
 
+def onCol(function, arr, col=0):
+    arr = np.asarray(arr)
+    return function(arr[:,col])
 
 #### fit functions
 def f_gaussian(x, sigma, mu, A):
