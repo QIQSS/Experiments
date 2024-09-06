@@ -32,6 +32,8 @@ def _imshow_make_kwargs(
            x_axis2=None, x_label2='', y_axis2=None, y_label2='',
            x_slice=(None,None), y_slice=(None, None), slice_by_val=False,
            
+           transpose=False,
+           
            title='', text='', text_pos='dr', text_color='white',
            cbar=True, cbar_label='', cbar_title='',
            cmap: Literal['<mpl_cmap>', 'random'] = 'viridis',
@@ -142,8 +144,16 @@ def imshow(array, **kwargs):
     x_axis2 = _prepAxis(kw['x_axis2'])
     y_axis2 = _prepAxis(kw['y_axis2'])
 
-    # slicing:
     x_slice, y_slice = kw['x_slice'], kw['y_slice']
+    x_label, y_label = kw['x_label'], kw['y_label']
+
+    if kw['transpose']:
+        x_axis, y_axis = y_axis, x_axis
+        x_slice, y_slice = y_slice, x_slice
+        x_label, y_label = y_label, x_label
+        array = array.T
+
+    # slicing:
     slice_by_val = kw['slice_by_val']
     if x_slice != (None, None):
         if isinstance(x_slice, int): x_slice = (0, x_slice)
@@ -176,8 +186,8 @@ def imshow(array, **kwargs):
     
 
     im = ax.imshow(array, **plot_kwargs)
-    ax.set_xlabel(kw['x_label'])
-    ax.set_ylabel(kw['y_label'])
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
     ax.set_title(kw['title'])
 
     if cbar:

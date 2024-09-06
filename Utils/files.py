@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from pyHegel import commands
-from pyHegel.instruments_base import BaseInstrument
+from pyHegel.instruments_base import BaseInstrument, BaseDevice
 
 from typing import List
 
@@ -86,10 +86,14 @@ def saveToNpz(path, filename, array, metadata={}, make_date_folder=True):
     if filename == '': timestamp = timestamp[:-1]
     fullname = path + timestamp + filename
     
-    # formating metadata
+    # formating special metadata
     for key, val in metadata.items():
-        if isinstance(val, BaseInstrument): # is pyHegel instrument
-            metadata[key] = val.iprint()
+        match val:
+            case BaseInstrument():
+                metadata[key] = val.iprint()
+            case BaseDevice():
+                metadata[key] = val.get()
+
     metadata['_filename'] = timestamp+filename
     
     # saving zip
