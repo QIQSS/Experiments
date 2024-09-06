@@ -196,7 +196,6 @@ class Pulse(object):
         
     def addRamp(self, duration, amplitude_start, amplitude_stop, offset=0, mark=(0,0)):
         """ less verbose way of adding a ramp.
-        Can be used also for constant value if start=stop
         """
         self.addSegment(Segment(duration=duration, waveform=Ramp(amplitude_start, amplitude_stop), offset=offset, mark=mark))
     
