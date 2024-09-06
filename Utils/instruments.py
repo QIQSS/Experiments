@@ -30,12 +30,12 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         gain = 1/(0.02512)*0.4
     
     awg.run(False)
+    if len(wave) < 2048:
+        print(f"Probably not enough points: {len(wave)}")
     awg.waveform_create(wave, wv_name, sample_rate=awg_sr, amplitude=2*wave_max_val*gain, force=True)
     awg.waveform_marker_data.set(marks, wfname=wv_name)
     awg.channel_waveform.set(wv_name,ch=channel)
     amp = 2*wave_max_val*gain
-    if amp > 0.750:
-        print(f"Warning: need a volt amplitude with gain above 750mV: {amp}V")
     awg.volt_ampl.set(amp, ch=channel)
 
         
@@ -57,10 +57,9 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         plt.title(wv_name)
 
 
-    if amp > 0.750:
-        print(f"Warning: need a volt amplitude with gain above 750mV: {amp}V")
+    if amp > 1.5:
+        print(f"Warning: volt amplitude with gain above 1.5V: {amp}V")
         return True
-
 
 #ats = instruments.ATSBoard(systemId=1, cardId=1)
 #ats_conf = dict(sample_rate=10e5,

@@ -33,13 +33,14 @@ def pl(file):
 
     # cut
     cut_id_start = ua.findNearest(timelist_raw, 0.0018, 'id') # remove beginning of the pulse
-    cut_id_stop = -100
+    cut_id_start += 100
+    cut_id_stop = -1
     arr = ua.sliceColumns(raw, cut_id_start, cut_id_stop)
     timelist = timelist_raw[cut_id_start:cut_id_stop]
     timelist = np.asarray(timelist)-timelist[0]
     
     # filter and stuff
-    filt = ua.gaussianLineByLine(arr, 20)
+    filt = ua.gaussianlbl(arr, 10)
     x, hist = ua.histogram(filt, return_type='all')
     peaks, prop = ua.findPeaks(hist, show_plot=False, prominence=max(hist)*0.01)
     

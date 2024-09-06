@@ -27,7 +27,7 @@ f = ua.f_expDecay
 
 awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
-awg_sr = 40e4
+awg_sr = 40e5
 channel = {'P1':1, 'P2':2}
 send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
 awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
@@ -36,6 +36,9 @@ awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
 awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
 awg.write('SOURce2:DAC:RESolution 15')
 awg.write('SOURce3:DAC:RESolution 15')
+awg.write('OUTput1:STATe 1')
+awg.write('OUTput2:STATe 1')
+awg.write('OUTput3:STATe 1')
 # debug: awg.clear()
 
 ats = instruments.ATSBoard(systemId=1, cardId=1)
@@ -53,8 +56,11 @@ def acquire(acq_time):
     data = ats.fetch.get()[2]
     return data
 
-bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
-ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
+#bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
+#ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
+
+bi9 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=9)
+B2 = instruments.LimitDevice((bi9.ramp, {'ch': 4}), min=-4.0, max=4.0)
 
 #zi = instruments.zurich_UHF("dev2949")
 #zi_get = lambda: commands.get((zi.readval, {'vals': ['r'], 'ch': 0}))[0]
@@ -66,19 +72,96 @@ def shiftP2(val): rhP2.ramp.set(rhP2.get()+val)
 set_function = {'P1': rhP1.ramp.set, 'P2': rhP2.ramp.set}
 shift_function = {'P1': shiftP1, 'P2': shiftP2}
 
+# %% Mesures Tunnel rate
+
+B2_v = [0.3,0.4,0.5,0.6,0.7,0.8,0.85,0.9,0.95]
+
+P2_t1 = [0.552,0.542,0.534,0.525,0.518,0.5105,0.507,0.504,0.4945]
+
+P2_t2 = [0.66,0.649,0.636,0.6255,0.615,0.604,0.6,0.5955,0.5885]
+
+P2_t3 = [0.754,0.743,0.7315,0.7195,0.71,0.701,0.6955,0.692,0.687]
+
+spam = 0.01
+
+tr = [P2_t1,P2_t2,P2_t3]
+tr_text = ['t1', 't2', 't3']
+
+for i in range(len(B2_v)):
+    set(B2,B2_v[i])
+    
+    for k, trans in zip(tr, tr_text):
+    
+        p1_0, p2_0 = 0.5, k[i]+spam
+
+        step_on, constant_on = 'P2', 'P1'
+        val1, val2 = -2*spam, 0
+        time1, time2 = 0.007, 0.007
+    
+        pulseStep = Pulse(name='step', shape_comp=True)
+        pulseStep.add(time1*0.1)
+        pulseStep.add(time1, val1, mark=True)
+        pulseStep.add(time2, val2, mark=True)
+    
+        pulseZero = pulseStep.genMarksOnly(name='constant')
+    
+        # send to awg
+        send(pulseStep, ch=channel[step_on])  # channel 1 (2) on P1 (P2)
+        send(pulseZero, ch=channel[constant_on])
+        send(pulseStep, ch=3, run_after=True)
+        #pulseStep.plot(pulseZero, no_shape_comp=0)
+        #genPWLFile(pulseStep, awg_sr, 'psb_pulse.txt')
+    
+        acq_time = pulseStep.getMarkDuration(awg_sr)
+        ats.acquisition_length_sec.set(acq_time)
+        #ats.sample_rate.set(100000)
+        set_function['P1'](p1_0)
+        set_function['P2'](p2_0)
+    
+        wait(1)
+        pts = [acquire(acq_time) for _ in alive_it(range(2000), spinner=None)]
+    
+        filename = uf.saveToNpz(LOG_PATH, f'P2_{trans}_B2_{i}', pts, 
+                                metadata=dict(pulse=str(pulseStep), p1=rhP1, p2=rhP2, t_acq=acq_time,
+                                B2=bi9, p1_0=p1_0, p2_0=k[i]))
+
+# %% Analyse
+t1name=uf.fileIn('C:\\Codes\\Lab-Scripts\\Logs\\20240830','t1')
+#plt.figure()
+for i in t1name:
+    plt.figure()
+    d = uf.loadNpz(i)
+    arr = d.get('array')
+    y = np.mean(arr, axis=0)
+    x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
+    #xx = x[7000:7050]
+    #yy = y[7000:7050]
+    
+    #xx = x[7040:8500]
+    #yy = y[7040:8500]
+    
+    xx = x[28:600]
+    yy = y[28:600]
+    fit.fitplot(f,xx,yy,p0=[503.5e-6,0,0,-28.63],noadjust=[]) 
+    #plt.plot(x,y)
+    #wait(1)
+    plt.show()
+    
+
+
 # %% Pulse two step on one gate
-p1_0, p2_0 = 1.025, 0.548
+p1_0, p2_0 = 0.5, 0.512
 
 step_on, constant_on = 'P2', 'P1'
-val1, val2 = 0, 0.002
-time1, time2 = 0.005, 0.005
+val1, val2 = 0, 0.005
+time1, time2 = 0.002, 0.002
 
 #####
 pulseStep = Pulse(name='step', shape_comp=True)
-pulseStep.add(time1, val1, mark=True)
+pulseStep.add(time1, val1, mark=(0.,1.))
 pulseStep.add(time2, val2, mark=True)
-pulseStep.add(time1, val1, mark=True)
-# pulseStep.plot(pulseStep, wide=True, no_shape_comp=False)
+#pulseStep.add(time1, val1, mark=True)
+#pulseStep.plot(pulseStep, wide=True, no_shape_comp=False)
 
 pulseZero = pulseStep.genMarksOnly(name='constant')
 
@@ -100,10 +183,10 @@ pts = [acquire(acq_time) for _ in alive_it(range(800), spinner=None)]
 #                     axes_dict={'x': acq_time})
 
 # %% save
-filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n', pts, metadata=dict(pulse=str(pulseStep), p1=rhP1, p2=rhP2, t_acq=acq_time))
+filename = uf.saveToNpz(LOG_PATH, '800traces_B2=850mV', pts, metadata=dict(pulse=str(pulseStep), p1=rhP1, p2=rhP2, t_acq=acq_time))
 
 # %% fit 1
-d = uf.loadNpz('C:\\Codes\\Lab-Scripts/Logs/20240820/20240820-143521-1000traces_TC=100n.npz')
+d = uf.loadNpz('C:\\Codes\\Lab-Scripts/Logs/20240829/20240829-173232-800traces_B2=850mV')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
 x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
@@ -115,7 +198,7 @@ fit.fitplot(f,xx,yy,p0=[18e-6,-2,-0.005,-48],noadjust=[])
 
 # %% fit 2
 
-d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-150621-1000traces_TC=50n')
+d = uf.loadNpz('C:\\Codes\\Lab-Scripts\\Logs\\20240830/20240830-141100-P2_t1_B2_0.npz')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
 x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
