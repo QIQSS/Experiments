@@ -63,12 +63,16 @@ class mplqt(QMainWindow):
     """ to force a fig to be interactive even if %matplotlib is set to inline
     require: %gui qt
     """
-    def __init__(self, fig):
+    def __init__(self, obj):
         super().__init__()
         self.widget = QWidget()
         self.setCentralWidget(self.widget)
         layout = QVBoxLayout()
         self.widget.setLayout(layout)
+        
+        if isinstance(obj, list):
+            fig = obj[0].figure
+            
         self.canvas = FigureCanvas(fig)
 
         self.toolbar = NavigationToolbar(self.canvas, self)

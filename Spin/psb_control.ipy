@@ -1,0 +1,126 @@
+# %% init
+LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
+LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
+
+%cd $LAB_SCRIPT_PATH
+LOG_PATH = LAB_SCRIPT_PATH + "/Spin/logs"
+
+from pyHegel import instruments
+from pyHegel.commands import wait
+
+import numpy as np
+from tqdm import tqdm
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import instruments as ui
+from Utils import utils as uu
+
+from Utils.plot import imshow
+from Pulses.Builder import Pulse, genPWLFile
+
+from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
+# %% setup
+
+awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
+gain = awg.gain = 1/(0.02512)*0.4
+awg_sr = 40e4
+channel = {'P1':1, 'P2':2}
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
+awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
+awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
+awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
+awg.write('SOURce2:DAC:RESolution 15')
+awg.write('SOURce3:DAC:RESolution 15')
+# debug: awg.clear()
+
+ats = instruments.ATSBoard(systemId=1, cardId=1)
+ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
+ats.active_channels.set(['A','B'])
+ats.sample_rate.set(100000)
+ats.trigger_level_1.set(1000)
+ats.ConfigureBoard()
+ats.nbwindows.set(1)
+ats.trigger_delay.set(0)
+def acquire(acq_time):
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(acq_time)
+    data = ats.fetch.get()[2]
+    return data
+
+rhP1 = bi3 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
+rhP2 = bi1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
+def shiftP1(val): rhP1.ramp.set(rhP1.get()+val)
+def shiftP2(val): rhP2.ramp.set(rhP2.get()+val)
+set_function = {'P1': rhP1.ramp.set, 'P2': rhP2.ramp.set}
+shift_function = {'P1': shiftP1, 'P2': shiftP2}
+
+#psg
+
+
+# %% 40 -> 31 -> 40 pulse
+##### settings
+#   (P1  ,  P2)
+_40 = (0 , 0)
+_31 = (-0.15, -0.15)
+
+tw = 0.015
+t40, t31 = 0.001, 0.001,
+
+acq_on = 'full' # 'full' | 'read'
+
+# psg
+freq = 1e9
+freq_deviation = 10e6
+
+# vm
+read_level = {'P1': 1.09, 'P2': 0.59}
+filt = True # gaussian filter
+##############
+
+pulseP1 = Pulse(name='P1', shape_comp=True)
+pulseP1.add(tw)
+pulseP1.add(t40, offset=_40[0], mark=acq_on=='full')
+pulseP1.add(t31, offset=_31[0], mark=acq_on=='full')
+pulseP1.add(t40, offset=_40[0], mark=True)
+
+pulseP2 = Pulse(name='P2', shape_comp=True)
+pulseP2.add(tw)
+pulseP2.add(t40, offset=_40[0], mark=acq_on=='full')
+pulseP2.add(t31, offset=_31[0], mark=acq_on=='full')
+pulseP2.add(t40, offset=_40[0], mark=True)
+
+pulseSR = Pulse(name='ESR', shape_comp=False)
+pulseSR.add(tw)
+pulseSR.add(t40, offset=_40[0], mark=acq_on=='full')
+pulseSR.addRamp(t31, -1, +1, mark=True)
+pulseSR.add(t40)
+
+pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=True, no_shape_comp=False)
+#genPWLFile(pulseP2, awg_sr, 'psb_pulse.txt')
+
+acq_time = pulseP1.getMarkDuration(awg_sr)
+ats.acquisition_length_sec.set(acq_time)
+#ats.sample_rate.set(1000000)
+
+send(pulseP1, 1)
+send(pulseP2, 2)
+send(pulseSR, 3, run_after=True)
+
+rhP1.ramp.set(read_level['P1'])
+rhP2.ramp.set(read_level['P2'])
+
+# vm
+def vmget():
+    data = acquire(acq_time)
+    data = ua.gaussian(data, 2) if filt else data
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=100,
+                      xlabel="time", 
+                      axes_dict={'x': acq_time})
+
+

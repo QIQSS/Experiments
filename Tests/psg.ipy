@@ -8,13 +8,22 @@ from Pulses.Builder import Pulse
 
 # %%
 psg = instruments.agilent_rf_PSG('GPIB0::19::INSTR')
-awg = instruments.agilent_rf_33522A('tcpip::192.168.137.76')
 
 # %%
 f_base = 60e6
 f_derive = 2e6
 control_time = 0.0005
 
+#####
+psg.freq_cw.set(f_base)
+psg.write(f'FM1:DEViation {f_derive}')
+
+
+
+psg.mod_fm_en.set(True)
+psg.rf_en.set(True)
+
 pulse = Pulse(name='test')
 pulse.add(control_time*2)
 pulse.addRamp(control_time, -1, 1, mark=True)
+

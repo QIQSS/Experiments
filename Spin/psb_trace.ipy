@@ -1,24 +1,23 @@
 # %% imports
 OS = 'l' # 'l' | 'w'
-LS_PATH = {'w':'C:/Codes/Lab-Scripts',
-           'l':'/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts'}[OS]
+LS_PATH, LOG_PATH = \
+            {'w':['C:/Codes/Lab-Scripts', 
+                  '//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/'],
+             'l':['/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts',
+                  '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/']}\
+            [OS]
 %cd $LS_PATH
 
-LOG_PATH = {'w':'//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/',
-           'l':'/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/'}\
-            [OS]
 from Utils import analyse as ua
 from Utils import files as uf
 from Utils import plot as up
 from Utils import utils as uu
 
 from Utils.plot import imshow, qplot
-from alive_progress import alive_it as ai
 from tqdm import tqdm
 from icecream import ic
 
 from pyHegel import fitting as fit
-from pyHegel.commands import wait
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib
@@ -78,9 +77,9 @@ days = [LOG_PATH + d for d in ['20240821', '20240822', '20240823']]
 files = sorted(uf.fileIn(days, contains='mesureT1_oneshot', verbose=True))
 resoneshot = [pl(f, False) for f in tqdm(files)]
 #uf.saveToNpz(LOG_PATH+'20240821', 'resoneshot', resoneshot, make_date_folder=False)re
-map_ = uf.loadNpz(LOG_PATH+'20240821'+'/20240821-225919-transition_B=800mT_retour.npz')
 # %%% load
-resoneshot = uf.loadNpz('/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/20240821/resoneshot.npz').get('array')
+resoneshot = uf.loadNpz('/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/20240821/20240826-183809-resoneshot.npz').get('array')
+map_ = uf.loadNpz(LOG_PATH+'20240821'+'/20240821-225919-transition_B=800mT_retour.npz')
 # %%% clean
 resoneshot_clean = [(0, t[1], t[2]) if t[0] < 0 else t for t in resoneshot]
 resoneshot_clean = [(0, t[1], t[2]) if t[0] > 1.0 else t for t in resoneshot_clean]
@@ -177,10 +176,12 @@ plt.show()
 # %%% plot max(traces)
 maxi = [1/np.max(np.asarray(res)[:,0]) for res in ress]
 maxi[0] = 0
-plt.plot(np.array([100, 500, 800, 1000, 1200])*1e-3, maxi, marker='o', linestyle='--')
-plt.ylabel(r'$\frac{1}{T_1}$      ', rotation=0, fontsize=20)
-plt.xlabel('Bz (T)')
-plt.grid()
+fig, ax = plt.subplots()
+ax.plot(np.array([100, 500, 800, 1000, 1200])*1e-3, maxi, marker='o', linestyle='')
+ax.set_ylabel(r'$1/T_1$ (Hz)', fontsize=15)
+ax.set_xlabel('$B_z$ (T)', fontsize=15)
+ax.set_yscale('log')
+fig.show()
 
 # %% 20240820 map T1 a B=.8, 'we' et zone 1 2 3
 days = [LOG_PATH+d for d in ['20240816', '20240817', '20240818', '20240819', '20240820', '20240821']]
