@@ -80,7 +80,7 @@ def meandiff(a):
     return np.mean(np.diff(a))
 
 def multiget(arr, list_of_indexes):
-    return [axis[i] for i in list_of_indexes]
+    return [arr[i] for i in list_of_indexes]
         
 #### filters
 
@@ -346,6 +346,7 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
             continue
 
     if show_plot and best_params is not None:
+        plt.figure()
         plt.plot(x, function(x, *best_params), color='red', lw=3, label='Fit')
         plt.plot(x, y, color='blue', marker='o', linestyle='None', label='Data')
         
@@ -355,8 +356,9 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
         param_names = list(sig.parameters.keys())[1:]  # skip the first parameter (x)
 
         param_text = ', '.join(f'{name}={value:.3f}' for name, value in zip(param_names, best_params))
-        plt.text(0.05, 0.95, f'Fit parameters:\n{param_text}', 
+        plt.text(0.6, 0.7, f'Fit parameters:\n{param_text}', 
                  transform=plt.gca().transAxes, fontsize=12, verticalalignment='top',
+                 horizontalalignment='left',
                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         plt.title(plot_title)
         plt.legend()
