@@ -21,6 +21,14 @@ def try_(function_no_arg, fallback):
         print(f"{e}")
         return fallback
 
+def fname():
+    """ return the name of the function from which called """
+    import inspect
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    function_name = caller_frame.f_code.co_name
+    return str(f"<{function_name}>")
+
 class customDict(dict):
     """ custom version of a dictionnary
     
@@ -72,6 +80,8 @@ class mplqt(QMainWindow):
         
         if isinstance(obj, list):
             fig = obj[0].figure
+        else:
+            fig = obj
             
         self.canvas = FigureCanvas(fig)
 

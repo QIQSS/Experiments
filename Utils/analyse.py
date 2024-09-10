@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 from typing import Literal
 
 from . import plot as up
+from . import utils as uu
 #### new array
 
 
@@ -81,7 +82,7 @@ def meandiff(a):
 
 def multiget(arr, list_of_indexes):
     return [arr[i] for i in list_of_indexes]
-        
+
 #### filters
 
 def fft(arr):
@@ -155,6 +156,9 @@ def classify(image, threshold, inverse=False):
 def allequal(arr, val):
     return np.all(arr == val) 
 
+def atleastoneequal(arr, val):
+    return np.sum(arr == val) == 1
+
 def countHighLow(arr1d, high=1, low=0):
     """ count and return the proportion of high and low value """
     h_count = np.sum(arr1d == high)
@@ -163,11 +167,12 @@ def countHighLow(arr1d, high=1, low=0):
     l_prop = l_count / arr1d.size
     return dict(high=h_prop, low=l_prop, high_count=h_count, low_count=l_count)
 
-def cleanTrace(trace, tolerance, verbose=False, show_plot=False):
+def removeSmallEvents(trace, tolerance, ndim=1, verbose=False, show_plot=False):
     """ repllace event with less points than tolerance 
     by zeros (ones) if event is ones (zeros).
     trace is a 1d array with only zeros and ones.
     """
+
     event_indexes = np.where(np.diff(trace) != 0)[0]+1
     event_indexes = np.concatenate(([0], event_indexes, [len(trace)]))
 
@@ -275,6 +280,24 @@ def findPeaks(points, show_plot=False,
         plt.grid()
         plt.show()
     return peaks, properties
+
+def autoClassify(array, width_tolerance=0, prominence_factor=0.03, verbose=0):
+    """ automated histogram, peaks analysis, gaussian fit then classify """
+    bins, hist = histogram(array, return_type='all')
+    peaks, prop = findPeaks(hist, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
+
+    if len(peaks) != 2:
+        print(f"{uu.fname()}: nb peaks != 2, can't classify")
+        return False
+
+    p0 = [0.4, 0.4, bins[peaks[0]], bins[peaks[1]], hist[peaks[0]], hist[peaks[1]]]
+    dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
+    th = findClassifyingThreshold(dg_params, 'min')
+    clas = classify(array, th)
+    clas_clean = np.apply_along_axis(removeSmallEvents, arr=clas, axis=1, tolerance=width_tolerance)
+
+    return clas_clean
+
 
 def onCol(function, arr, col=0):
     arr = np.asarray(arr)

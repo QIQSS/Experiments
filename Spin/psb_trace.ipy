@@ -60,7 +60,7 @@ def pl(file, class_inverse=class_inverse, plot=plot,
     dg_params = ua.ajustementDeCourbe(ua.f_doubleGaussian, bins, hist, p0=p0, show_plot=False)
     th = ua.findClassifyingThreshold(dg_params, 'min')
     clas = ua.classify(filt, th, inverse=class_inverse)
-    clas_clean = np.apply_along_axis(ua.cleanTrace, arr=clas, axis=1, tolerance=class_tolerance)
+    clas_clean = np.apply_along_axis(ua.removeSmallEvents, arr=clas, axis=1, tolerance=class_tolerance)
     #up.plotSideBySide(raw, arr, filt, clas, clas_clean, link_all=True)
     #if plot: up.plotDoubleGaussian(bins, *dg_params, hist, th, title=f"{file.split('-')[-1]}")
 
