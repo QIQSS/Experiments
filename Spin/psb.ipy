@@ -69,8 +69,8 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 1.04, 0.020, 0.010
-valueStep, deltaStep, nbStep = 0.55, 0.005, 101
+valueRamp, deltaRamp, timeRamp = 1.102, 0.015, 0.010
+valueStep, deltaStep, nbStep = 0.602, 0.008, 101
 
 sync_time_after_ramp = 0.01
 ramp_direction = 'up' # 'up' | 'down'
@@ -116,7 +116,7 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_directio
                          'y': [valueRamp-deltaRamp, valueRamp+deltaRamp]},
                      fn_yshift=shift_function[ramp_on])
 
-# %% save
+# %%% save
 img = vm.data_buffer[0].T
 up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
           title='B=800mT', filename='transition_B=800mT_retour', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH)
@@ -129,18 +129,18 @@ L = (0, 0 )
 E = (0 , -.004)
 
 # read center
-R = (0    , -0.000)
+R = (0    , 0)
 L = (-.015, 0 )
 E = (-.010 , -.005)
 
-tR, tL, tE = 0.05, 0.0005, 0.0008
-read_delta = dict(P1=0.000, P2=-0.000)
+tR, tL, tE = 0.1, 0.01, 0.01
+read_delta = dict(P1=0.0025, P2=-0.000)
 
 tw = 0.015
-acq_on = 'full' # 'full' | 'read'
+acq_on = 'read' # 'full' | 'read'
 
 # vm
-read_level = {'P1': 1.09, 'P2': 0.59}
+read_level = {'P1': 1.095, 'P2': 0.598}
 to_sweep = 'P1'
 sweep_delta, sweep_nb = 0.003, 101
 x_axis = 'P2'  # 'P1' | 'P2' | 'time'
@@ -195,112 +195,34 @@ vm = VideoModeWindow(fn_get=vmget, dim=1,
 
 
 # %% PSB trace x fois
-read_level = {'P1': 1.040, 'P2': 0.554}
+read_level = {'P1': 1.098, 'P2': 0.598}
 rhP1.ramp.set(read_level['P1'])
 rhP2.ramp.set(read_level['P2'])
 
-vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, wrap_at=2000,
+vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, wrap_at=1000,
                       xlabel=f"time (s)", axes_dict={'x':ats.acquisition_length_sec.get()},
                       play=True, pause_after_one=True, take_focus=False, show=True)
-#%%
+#%%% plot splitting
 traces = np.array(vm.data_buffer[0].T)
-imshow(traces, save=True, path=LOG_PATH,
+imshow(traces, save=False, path=LOG_PATH,
        metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2)),
        x_axis=acq_time,
        filename=f"readout")
 
-#hist, bins = histogramOnEachColumns(traces, bins=100, get_bins=True)
-#imshow(hist, x_axis=acq_time, y_axis=bins,
-#       title=f"", x_label='time (s)', x_label2='', cbar=True,
-#       save=True, path=LOG_PATH, filename=f"transition_31-40", metadata=dict(traces=traces))
+#traces = traces[:,:-10]
 
-#plotColumns(hist, interval=10, x_label='bins', y_label='signal', cbar=True, z_label='time')
+hist, bins = ua.histogramOnEachColumns(traces, bins=100, get_bins=True)
+imshow(hist, x_axis=acq_time, y_axis=bins,
+       title=f"", x_label='time (s)', x_label2='', cbar=True,
+       save=False, path=LOG_PATH, filename=f"transition_31-40", metadata=dict(traces=traces))
 
-# %% PSB pulse change read position
+#up.plotColumns(hist, interval=10, x_label='bins', y_label='signal', cbar=True, z_label='time')
 
-points = ua.genTrapezoidSweep(0.550, 0.557, 22, 
-                                       1.03, 1.044, 
-                                       1.04, 1.054, 11)
-plt.scatter(np.asarray(points)[:,0], np.asarray(points)[:,1], c=[i for i in range(len(points))])
+# %% mesure T1(P1, P2)
+nb_trace = 1000
+p1_0, p2_0 = 1.098, 0.598
 
-#points
-vp1, vp2 =  1.035, 0.551
-##### settings
-p1_0, p2_0 = 1.0400, 0.554
-
-# read center
-R = (0    , -0.000)
-L = (-.010, 0 )
-E = (-.010 , -.005)
-
-tR, tL, tE = 0.05, 0.0005, 0.0008
-newL = lambda p1, p2: np.asarray(L) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
-newE = lambda p1, p2: np.asarray(E) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
-L = newL(vp1, vp2)
-E = newE(vp1, vp2)
-
-tw = 0.015
-acq_on = 'full' # 'full' | 'read'
-
-# vm
-read_level = {'P1': vp1, 'P2': vp2}
-to_sweep = 'P1'
-sweep_delta, sweep_nb = 0.003, 101
-x_axis = 'P2'  # 'P1' | 'P2' | 'time'
-filt = True # gaussian filter
-##############
-
-pulseP1 = Pulse(name='P1', shape_comp=True)
-pulseP1.add(tw)
-pulseP1.add(tL, offset=L[0], mark=acq_on=='full')
-pulseP1.add(tE, offset=E[0], mark=acq_on=='full')
-pulseP1.add(tL, offset=L[0], mark={'full':True, 'read':(0.9, 1)}[acq_on])
-pulseP1.add(tR, offset=R[0], mark=(0, 0.9))
-
-pulseP2 = Pulse(name='P2', shape_comp=True)
-pulseP2.add(tw)
-pulseP2.add(tL, offset=L[1], mark=acq_on=='full')
-pulseP2.add(tE, offset=E[1], mark=acq_on=='full')
-pulseP2.add(tL, offset=L[1], mark={'full':True, 'read':(0.9, 1)}[acq_on])
-pulseP2.add(tR, offset=R[1], mark=(0, 0.9))
-
-#compensateAndEqualizeTime(pulseP1, pulseP2, 0.01)
-
-pulseP1.plot(pulseP2, wide='wider', relative_time=True, no_shape_comp=False)
-genPWLFile(pulseP2, awg_sr, 'psb_pulse.txt')
-
-acq_time = pulseP1.getMarkDuration(awg_sr)
-ats.acquisition_length_sec.set(acq_time)
-#ats.sample_rate.set(1000000)
-
-send(pulseP1, 1)
-send(pulseP2, 2)
-send(pulseP1, 3, run_after=True)
-
-rhP1.ramp.set(read_level['P1'])
-rhP2.ramp.set(read_level['P2'])
-# # vm
-sweep = SweepAxis(np.linspace(read_level[to_sweep]-sweep_delta, read_level[to_sweep]+sweep_delta, sweep_nb),
-                  fn_next=set_function[to_sweep], label=to_sweep, enable=False)
-
-def vmget():
-    sweep.next()
-    data = acquire(acq_time)
-    data = ua.gaussian(data, 2) if filt else data
-    return data
-
-vm = VideoModeWindow(fn_get=vmget, dim=1,
-                      xlabel=f"{x_axis}", ysweep=sweep,
-                      axes_dict={'x': [read_level[x_axis]-abs(read_delta[x_axis]),
-                                      read_level[x_axis]+abs(read_delta[x_axis])]
-                                if x_axis != 'time' and read_delta[x_axis]!=0 else acq_time},
-                      fn_xshift=shiftP1 if x_axis != 'time' else None, window_size='wide')
-
-
-# %% mesure T1
-nb_trace = 2000
-p1_0, p2_0 = 1.0400, 0.554
-
+# %%% gen points
 points = ua.genTrapezoidSweep(0.550, 0.557, 22, 
                                        1.03, 1.044, 
                                        1.04, 1.054, 11)
@@ -337,19 +259,25 @@ img = imshow(tr_array, ax=ax, x_axis=x_axis, y_axis=y_axis, return_fig=True, cba
 sc = ax.scatter(np.asarray(all_points)[:,0], np.asarray(all_points)[:,1], c=[i for i in range(len(all_points))], cmap='plasma', edgecolor='k', s=100, alpha=0.75)
 plt.show()
 
+# Across detuning:
+P2_start, P2_stop = 0.601, 0.599
+P1_start, P1_stop = 1.094, 1.107
+nbpts = 101
+points = list(zip(np.linspace(P1_start, P1_stop, nbpts), np.linspace(P2_start, P2_stop, nbpts)))
 
-sw_points = pointsz4
-flbl = 'z4'
-for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_points)):
-    #if i < 275: continue # !!!! reprise 1
-    #if i < 299: continue # !!!! reprise 2
+# %%% mesure
+sw_points = points
+flbl = 'detuning'
+for i, (p1, p2) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_points)):
+    #if i < num: continue # reprise
     
     # read center
     R = (0    , -0.000)
     L = (-.015, 0 )
     E = (-.010 , -.005)
     
-    tR, tL, tE = 0.05, 0.0005, 0.0008
+    tR, tL, tE = 0.10, 0.01, 0.01
+    
     newL = lambda p1, p2: np.asarray(L) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
     newE = lambda p1, p2: np.asarray(E) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
     L = newL(p1, p2)
@@ -364,16 +292,17 @@ for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_poi
     pulseP1.add(tL, offset=L[0], mark=acq_on=='full')
     pulseP1.add(tE, offset=E[0], mark=acq_on=='full')
     pulseP1.add(tL, offset=L[0], mark={'full':True, 'read':(0.9, 1)}[acq_on])
-    pulseP1.add(tR, offset=R[0], mark=(0, 0.9))
+    pulseP1.add(tR, offset=R[0], mark=(0, 1))
     
     pulseP2 = Pulse(name='P2', shape_comp=True)
     pulseP2.add(tw)
     pulseP2.add(tL, offset=L[1], mark=acq_on=='full')
     pulseP2.add(tE, offset=E[1], mark=acq_on=='full')
     pulseP2.add(tL, offset=L[1], mark={'full':True, 'read':(0.9, 1)}[acq_on])
-    pulseP2.add(tR, offset=R[1], mark=(0, 0.9))
+    pulseP2.add(tR, offset=R[1], mark=(0, 1))
     
     acq_time = pulseP1.getMarkDuration(awg_sr)
+    acq_time += 0.5
     ats.acquisition_length_sec.set(acq_time)
     #ats.sample_rate.set(1000000)
     
@@ -387,19 +316,18 @@ for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_poi
 
 
     vm = VideoModeWindow(fn_get=lambda: acquire(acq_time), dim=1, wrap_at=nb_trace,
-                          xlabel=f"time (s), point p1:{p1} p2:{p2}", axes_dict={'x':acq_time},
+                          xlabel=f"time (s), point {i}/{len(sw_points)} p1:{p1} p2:{p2}", axes_dict={'x':acq_time},
                           play=True, pause_after_one=True, take_focus=True, show=True)
     
     traces = np.array(vm.data_buffer[0].T)
 
-    imshow(traces, save=True, path=LOG_PATH, show=False,
+    imshow(traces, save=False, path=LOG_PATH, show=False,
            metadata=dict(pulseP1=str(pulseP1), pulseP2=str(pulseP2), p1=p1, p2=p2, awg_overrange=awg_overrange),
            filename=f"mesureT1_{flbl}_{i}", x_axis=acq_time,
            y_label='count', x_label='time (s)', cbar=False)
         
-    wait(1)
+    wait(0.5)
     vm.close()
-    wait(1)
     
     
     
@@ -413,22 +341,23 @@ points = ua.genTrapezoidSweep(0.586, 0.593, 51,
 
 up.scatterOverImg(*points.T, ua.linlen(points), x_axis, y_axis, arr)
 
-nb_trace = 2000
+nb_trace = 1000 # 2000 then 1500 then 1000
 p1_0, p2_0 = 1.09, 0.590
 
 
 sw_points = points
 flbl = 'oneshot'
 for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_points)):
-    #if i < 275: continue # !!!! reprise 1
-    #if i < 299: continue # !!!! reprise 2
-    
+    if i < 253: continue # !!!! 2000 -> 1500
+    if i < 464: continue # !!!! 1500 -> 1000
+    if i < 468: continue # tR 0.01 -> 0.006
+
     # read center
     R = (0    , -0.000)
     L = (-.015, 0 )
     E = (-.010 , -.005)
     
-    tR, tL, tE = 0.05, 0.0005, 0.0008
+    tR, tL, tE = 0.008, 0.0005, 0.0008 #  0.05 -> 0.01 -> 0.006
     newL = lambda p1, p2: np.asarray(L) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
     newE = lambda p1, p2: np.asarray(E) + (np.asarray((p1_0, p2_0)) - np.asarray((p1, p2)))
     L = newL(p1, p2)
@@ -476,9 +405,8 @@ for i, (p2, p1) in alive_it(enumerate(sw_points), spinner=None, total=len(sw_poi
            filename=f"mesureT1_{flbl}_{i}", x_axis=acq_time,
            y_label='count', x_label='time (s)', cbar=False)
         
-    wait(1)
+    wait(0.5)
     vm.close()
-    wait(1)
     
     
     
