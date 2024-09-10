@@ -24,8 +24,15 @@ import matplotlib
 
 # %% PIPELINE
 # t1: -1 awgoverrange, -2 peaks error, -3 not enough counted trace, -4 exp fit error
-
-def pl(file, class_inverse=True, plot=False):
+before_read_time = 0.0018
+after_read_cut = -500
+class_inverse = False
+class_tolerance = 60
+plot=False
+def pl(file, class_inverse=class_inverse, plot=plot, 
+       before_read_time=before_read_time,
+       after_read_cut=after_read_cut,
+       class_tolerance=class_tolerance):
     name = file.split('-')[-1]
     load_dict = uf.loadNpz(file)
     metadata, raw = load_dict.get('metadata'), load_dict.get('array')
@@ -36,10 +43,9 @@ def pl(file, class_inverse=True, plot=False):
     if metadata.get('awg_overrange', False): return -1, p1, p2
 
     # cut
-    cut_id_start = ua.findNearest(timelist_raw, 0.0018, 'id')+100 # remove beginning of the pulse
-    cut_id_stop = -500
-    arr = ua.sliceColumns(raw, cut_id_start, cut_id_stop)
-    timelist = timelist_raw[cut_id_start:cut_id_stop]
+    cut_id_start = ua.findNearest(timelist_raw, before_read_time, 'id') # remove beginning of the pulse
+    arr = ua.sliceColumns(raw, cut_id_start, after_read_cut)
+    timelist = timelist_raw[cut_id_start:after_read_cut]
     timelist = np.asarray(timelist)-timelist[0]
 
     # filter and stuff
@@ -47,7 +53,6 @@ def pl(file, class_inverse=True, plot=False):
     bins, hist = ua.histogram(filt, return_type='all')
     peaks, prop = ua.findPeaks(hist, show_plot=plot, prominence=max(hist)*0.03)
     if plot: imshow(filt)
-    if plot: qplot(hist, bins, vline=ua.multiget(peaks, bins))
 
     if len(peaks) != 2: return -2, p1, p2
 
@@ -55,9 +60,9 @@ def pl(file, class_inverse=True, plot=False):
     dg_params = ua.ajustementDeCourbe(ua.f_doubleGaussian, bins, hist, p0=p0, show_plot=False)
     th = ua.findClassifyingThreshold(dg_params, 'min')
     clas = ua.classify(filt, th, inverse=class_inverse)
-    clas_clean = np.apply_along_axis(ua.cleanTrace, arr=clas, axis=1, tolerance=60)
+    clas_clean = np.apply_along_axis(ua.removeSmallEvents, arr=clas, axis=1, tolerance=class_tolerance)
     #up.plotSideBySide(raw, arr, filt, clas, clas_clean, link_all=True)
-    if plot: up.plotDoubleGaussian(bins, *dg_params, hist, th, title=f"{file.split('-')[-1]}")
+    #if plot: up.plotDoubleGaussian(bins, *dg_params, hist, th, title=f"{file.split('-')[-1]}")
 
     stats_dict = ua.classTraces(clas_clean, timelist)
     counted_trace = stats_dict.get('low') + stats_dict.get('high')
@@ -68,9 +73,91 @@ def pl(file, class_inverse=True, plot=False):
 
     points = [np.sum(np.where(np.asarray(stats_dict['high_fall_time']) < t, 0, 1))/counted_trace for t in timelist]
     #A, t1 = ua.fitExpDecayLinear(timelist, points, verbose=True, show_plot=True, text=file)
-    t1, A = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points, show_plot=plot, p0=[0.006, 0.2], plot_title=name)
-    
+    plot=True
+    t1, A = ua.ajustementDeCourbe(ua.f_expDecay, timelist, points, show_plot=plot, p0=[0.02, 0.2], plot_title=name)
+    plot=False
     return t1, p1, p2
+
+# %% 20240910 map T1
+days = [LOG_PATH + d for d in ['20240908', '20240909', '20240910']]
+files = uf.fileIn(days, contains='zone_', verbose=True)
+tr = uf.loadNpz(LOG_PATH+'20240906/20240906-164238-transition_.npz')
+
+before_read_time = 0.03 + 0.03
+after_read_cut = None
+class_inverse = True
+class_tolerance = 200
+res = [pl(f, class_inverse=class_inverse, before_read_time=before_read_time) for f in tqdm(files)]
+
+# %%% plot
+res_clean = [(0, t[1], t[2]) if t[0] < 0 else t for t in res]
+kwargs = dict(
+              x_axis=tr.rget('x_axis'),
+              y_axis=tr.rget('y_axis'),
+              x_label='P2 (V)',
+              y_label='P1 (V)',
+              cmap='viridis',
+              cbar=False,
+              cbar_label='lockin',
+              scatter_points=res_clean,
+              scatter_cmap='inferno_r',
+              scatter_cbar_label='T1 (s)',
+              scatter_cbar=True,
+              scatter_size=20,
+              scatter_alpha=0.7,
+              figsize=[5,4],
+              return_type='win')
+
+imshow(tr.array, **kwargs)
+
+
+
+
+# %% 20240909 very long T1
+days = [LOG_PATH + d for d in ['20240906', '20240907']]
+files = sorted(uf.fileIn(days, contains='T1_', verbose=True))
+
+file5 = uf.loadNpz(files[0])
+file10 = uf.loadNpz(files[1])
+merged_array = np.concatenate((file5.array, file10.array))
+
+load_dict = {'array': merged_array, 'metadata': file5.metadata}
+
+before_read_time = 0.01*3
+after_read_cut = None
+class_inverse = True
+class_tolerance = 200
+
+# uf.saveToNpz(LOG_PATH, 'points_long_T1', 
+             # points, metadata=dict(timelist=timelist))
+points_dict = uf.loadNpz(LOG_PATH+'20240909/20240909-102548-points_long_T1.npz')
+points, timelist = points_dict.array, points_dict.metadata.get('timelist')
+
+# %%% fits
+#régime1
+cut = [500, 2500]
+timelist_fit_1, points_fit_1 = timelist[cut[0]:cut[1]], points[cut[0]:cut[1]]
+t1_1, A_1 = ua.ajustementDeCourbe(ua.f_expDecay, timelist_fit_1, points_fit_1, show_plot=True, p0=[0.5, 0.2])
+
+#régime2
+cut = [2500, None]
+timelist_fit_2, points_fit_2 = timelist[cut[0]:cut[1]], points[cut[0]:cut[1]]
+t1_2, A_2 = ua.ajustementDeCourbe(ua.f_expDecay, timelist_fit_2, points_fit_2, show_plot=True, p0=[0.5, 0.2])
+
+# %%% pretty plot
+fig, ax = plt.subplots(figsize=(5,4))
+ax.plot(timelist, points, marker='o')[0]
+ax.plot([], [], ' ', label=r"fit: $A*e^{-t/\tau}$")
+ax.plot(timelist, ua.f_expDecay(timelist, t1_1, A_1), color='red', 
+        label=f"$A={round(A_1, 3)}, "+r"\tau"+f"={round(t1_1, 4)}$")
+ax.plot(timelist, ua.f_expDecay(timelist, t1_2, A_2), color='orange', 
+        label=f"$A={round(A_2, 3)}, "+r"\tau"+f"={round(t1_2, 4)}$")
+
+
+ax.set_xlabel('time (s)')
+ax.set_ylabel('P_triplet')
+ax.legend()
+ax.grid()
 
 # %% 20240821-23 map T1 a B=.8, 'oneshot'
 days = [LOG_PATH + d for d in ['20240821', '20240822', '20240823']]
