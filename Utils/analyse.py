@@ -404,6 +404,22 @@ def gen2dTraceSweep(x_start, x_stop, y_start, y_stop, nbpts):
     y_list = np.linspace(y_start, y_stop, nbpts)
     return [(x, y) for x, y in zip(x_list, y_list)]
 
+def gen2dTraceSweepDiag(x_start1, x_stop1, y_start1, y_stop1, nbpts1,
+                       x_start2, y_start2, nbpts2):
+    """
+    (x_start1, y_start1) -> (x_stop1, y_stop1)
+    -> (x_start2, y_start1+nbpts2*x_step) -> (x_stop2, y_stop1+nbpts2*x_step)
+    """
+    sw1 = list(zip(np.linspace(x_start1, x_stop1, nbpts1), np.linspace(y_start1, y_stop1, nbpts1)))
+    points = sw1[:]
+    
+    x_step = abs(x_start1-x_start2)/float(nbpts2)
+    y_step = abs(y_start1-y_start2)/float(nbpts2)
+    for i in range(nbpts2):
+        swi = [(p[0]+i*x_step, p[1]+i*y_step) for p in sw1]
+        points += list(swi)
+    return list(points)
+
 def genTrapezoidSweep(x_start, x_stop, x_nb, y_start0, y_stop0, y_startn, y_stopn, y_nb):
     """ return a list of tuple """
     result = []    

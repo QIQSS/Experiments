@@ -47,6 +47,9 @@ def _imshow_make_kwargs(
            scatter_cmap: Literal['<mpl_cmap>'] = 'inferno',
            scatter_cbar_label: str = '',
            scatter_alpha: int = 1,
+           scatter_x_id = 2,
+           scatter_y_id = 1,
+           scatter_c_id = 0,
            
            use_latex: bool = False,
            figsize: tuple = None,
@@ -209,10 +212,12 @@ def imshow(array, **kwargs):
 
     sc_pts = kw['scatter_points']
     if sc_pts is not None:
-        scatter_x = [pt[2] for pt in sc_pts]
-        scatter_y = [pt[1] for pt in sc_pts]
-        scatter_c = [pt[0] for pt in sc_pts]
+        x_id, y_id, c_id = kw['scatter_x_id'], kw['scatter_y_id'], kw['scatter_c_id']
+        scatter_x = [pt[x_id] for pt in sc_pts]
+        scatter_y = [pt[y_id] for pt in sc_pts]
+        scatter_c = [pt[c_id] for pt in sc_pts]
         #scatter_c = [i for i in range(len(sc_pts))]
+        print(scatter_x)
         scatter = ax.scatter(scatter_x, scatter_y, c=scatter_c, s=kw['scatter_size'], cmap=kw['scatter_cmap'],
                              alpha=kw['scatter_alpha'])
         

@@ -32,3 +32,7 @@ try:
     from pyperclip import copy, paste
 except ImportError:
     pass
+
+# Garbage
+import gc
+ramasse_miette = gc.collect

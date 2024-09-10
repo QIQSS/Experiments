@@ -21,11 +21,12 @@ from Utils.plot import imshow
 from Pulses.Builder import Pulse, genPWLFile
 
 from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
+
 # %% setup
 
 awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
-awg_sr = 40e4
+awg_sr = 20e4
 channel = {'P1':1, 'P2':2}
 send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
 awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
@@ -39,7 +40,7 @@ awg.write('SOURce3:DAC:RESolution 15')
 ats = instruments.ATSBoard(systemId=1, cardId=1)
 ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
 ats.active_channels.set(['A','B'])
-ats.sample_rate.set(100000)
+ats.sample_rate.set(1000000)
 ats.trigger_level_1.set(1000)
 ats.ConfigureBoard()
 ats.nbwindows.set(1)
@@ -58,53 +59,56 @@ def shiftP2(val): rhP2.ramp.set(rhP2.get()+val)
 set_function = {'P1': rhP1.ramp.set, 'P2': rhP2.ramp.set}
 shift_function = {'P1': shiftP1, 'P2': shiftP2}
 
-#psg
+psg = instruments.agilent_rf_PSG('GPIB1::19::INSTR')
 
-
-# %% 40 -> 31 -> 40 pulse
+# %% 31 - 30 - 31 - read - 31:pulse - read
 ##### settings
 #   (P1  ,  P2)
-_40 = (0 , 0)
-_31 = (-0.15, -0.15)
+_read = (+0.01085 , -0.001)
+_31 = (0.0, +0.002 ) #(-0.013, +0.000)
+_30 = (-0.006, -0.006)
+#_40 = (+0.010, 0)
 
-tw = 0.015
-t40, t31 = 0.001, 0.001,
+t31, t31d, t30, tread = 0.01, 0.010, 0.01, 0.02
 
-acq_on = 'full' # 'full' | 'read'
-
-# psg
-freq = 1e9
-freq_deviation = 10e6
+tbefore = 0.02
 
 # vm
-read_level = {'P1': 1.09, 'P2': 0.59}
-filt = True # gaussian filter
+read_level = {'P1': 1.086, 'P2': 0.598}
+filt = 1 # gaussian filter
 ##############
 
 pulseP1 = Pulse(name='P1', shape_comp=True)
-pulseP1.add(tw)
-pulseP1.add(t40, offset=_40[0], mark=acq_on=='full')
-pulseP1.add(t31, offset=_31[0], mark=acq_on=='full')
-pulseP1.add(t40, offset=_40[0], mark=True)
+pulseP1.add(tbefore)
+pulseP1.add(t30, offset=_30[0], mark=True)
+pulseP1.add(t31, offset=_31[0], mark=True)
+pulseP1.add(tread, offset=_read[0], mark=True)
+pulseP1.add(t31d, offset=_31[0], mark=True)
+pulseP1.add(tread, offset=_read[0], mark=True)
+pulseP1.addCompensationZeroMean(value=-0.01)
 
 pulseP2 = Pulse(name='P2', shape_comp=True)
-pulseP2.add(tw)
-pulseP2.add(t40, offset=_40[0], mark=acq_on=='full')
-pulseP2.add(t31, offset=_31[0], mark=acq_on=='full')
-pulseP2.add(t40, offset=_40[0], mark=True)
+pulseP2.add(tbefore)
+pulseP2.add(t30, offset=_30[1], mark=True)
+pulseP2.add(t31, offset=_31[1], mark=True)
+pulseP2.add(tread, offset=_read[1], mark=True)
+pulseP2.add(t31d, offset=_31[1], mark=True)
+pulseP2.add(tread, offset=_read[1], mark=True)
+pulseP2.addCompensationZeroMean(value=+0.005)
 
 pulseSR = Pulse(name='ESR', shape_comp=False)
-pulseSR.add(tw)
-pulseSR.add(t40, offset=_40[0], mark=acq_on=='full')
-pulseSR.addRamp(t31, -1, +1, mark=True)
-pulseSR.add(t40)
+pulseSR.add(tbefore)
+pulseSR.add(t30+t31+tread)
+pulseSR.add(t31d/4)
+pulseSR.addRamp(t31d/2, -.75/awg.gain, +.75/awg.gain, mark=True)
+pulseSR.add(t31d/4, mark=True)
+pulseSR.add(tread, mark=False)
 
-pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=True, no_shape_comp=False)
-#genPWLFile(pulseP2, awg_sr, 'psb_pulse.txt')
+pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
+genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
 
 acq_time = pulseP1.getMarkDuration(awg_sr)
 ats.acquisition_length_sec.set(acq_time)
-#ats.sample_rate.set(1000000)
 
 send(pulseP1, 1)
 send(pulseP2, 2)
@@ -124,3 +128,41 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=100,
                       axes_dict={'x': acq_time})
 
 
+# %% psg setup
+
+# psg setup
+ampl = -20
+freq = 20e9
+freq_deviation = 32e6
+
+psg.ampl.set(ampl)
+psg.write(f'FM1:DEViation {freq_deviation}')
+
+#psg.freq_cw.set(freq)
+#psg.mod_fm_en.set(True)
+#psg.rf_en.set(True)
+
+# %% sweep drive frequence
+
+freq_points = np.linspace(21.3e9, 23e9, 351)
+nb_traces = 700
+
+for i, freq in tqdm(enumerate(freq_points), total=len(freq_points)):
+    
+    psg.freq_cw.set(freq)
+    
+    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=nb_traces,
+                          xlabel="time", 
+                          axes_dict={'x': acq_time},
+                          play=True, pause_after_one=True, take_focus=True, show=True)
+
+    traces = np.array(vm.data_buffer[0].T)
+
+    imshow(traces, save=True, path=LOG_PATH, show=False,
+           metadata=dict(freq=freq),
+           filename=f"drive_nuit_{i}", x_axis=acq_time,
+           y_label='count', x_label='time (s)', cbar=False)
+
+    wait(0.1)
+    vm.close()
+        
