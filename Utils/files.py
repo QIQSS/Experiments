@@ -75,15 +75,17 @@ def _makeDateFolder(path):
     if not os.path.exists(path): os.mkdir(path)
     return path + '/'
 
-def saveToNpz(path, filename, array, metadata={}, make_date_folder=True):
+def saveToNpz(path, filename, array, metadata={}, 
+              make_date_folder=True,
+              prepend_date=True):
     """ Save array to an npz file.
     metadata is a dictionnary, it can have pyHegel instruments as values: the iprint will be saved.
     """
     if not path.endswith(('/', '\\')):
         path += '/'
     if make_date_folder: path = _makeDateFolder(path)
-    timestamp = timemodule.strftime('%Y%m%d-%H%M%S-')
-    if filename == '': timestamp = timestamp[:-1]
+    timestamp = timemodule.strftime('%Y%m%d-%H%M%S-') if prepend_date else ''
+    if filename == '': timestamp = timestamp[:-1] if timestamp != '' else ''
     fullname = path + timestamp + filename
     
     # formating special metadata
@@ -101,8 +103,7 @@ def saveToNpz(path, filename, array, metadata={}, make_date_folder=True):
     
     print('Saved file to: ' + fullname)
     return fullname+'.npz'
-
-
+    
 
 #### pyHegel files
 
