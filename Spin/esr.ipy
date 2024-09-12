@@ -40,7 +40,8 @@ awg.write('SOURce3:DAC:RESolution 15')
 ats = instruments.ATSBoard(systemId=1, cardId=1)
 ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
 ats.active_channels.set(['A','B'])
-ats.sample_rate.set(1000000)
+#ats.sample_rate.set(1_000_000)
+ats.sample_rate.set(10_000)
 ats.trigger_level_1.set(1000)
 ats.ConfigureBoard()
 ats.nbwindows.set(1)
@@ -142,13 +143,28 @@ psg.write(f'FM1:DEViation {freq_deviation}')
 #psg.mod_fm_en.set(True)
 #psg.rf_en.set(True)
 
-# %% sweep drive frequence
-
+# %% sweep drive large
+psg.mod_fm_en.set(True)
 freq_points = np.linspace(21.3e9, 23e9, 351)
 nb_traces = 700
+flbl = 'nuit'
 
+runcell('sweep drive frequence', 'C:/Codes/Lab-Scripts/Spin/esr.ipy')
+
+# %% sweep drive moins large, sans modulation
+freq_points = np.linspace(22.2e9, 22.7e9, 251)
+nb_traces = 700
+flbl = 'pic225'
+
+psg.mod_fm_en.set(False)
+
+runcell('sweep drive frequence', 'C:/Codes/Lab-Scripts/Spin/esr.ipy')
+
+# %% sweep drive frequence
+""" args: freq_points, nb_traces, flbl """
 for i, freq in tqdm(enumerate(freq_points), total=len(freq_points)):
-    
+    if i <= 210: continue
+
     psg.freq_cw.set(freq)
     
     vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=nb_traces,
@@ -160,9 +176,13 @@ for i, freq in tqdm(enumerate(freq_points), total=len(freq_points)):
 
     imshow(traces, save=True, path=LOG_PATH, show=False,
            metadata=dict(freq=freq),
-           filename=f"drive_nuit_{i}", x_axis=acq_time,
+           filename=f"drive_{flbl}_{i}", x_axis=acq_time,
            y_label='count', x_label='time (s)', cbar=False)
 
-    wait(0.1)
     vm.close()
+    del vm
+    del traces
+    ramasse_miette()
+    
+    wait(0.5)
         

@@ -69,8 +69,8 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 1.102, 0.015, 0.010
-valueStep, deltaStep, nbStep = 0.602, 0.008, 101
+valueRamp, deltaRamp, timeRamp = 1.096, 0.015, 0.010
+valueStep, deltaStep, nbStep = 0.598, 0.008, 101
 
 sync_time_after_ramp = 0.01
 ramp_direction = 'up' # 'up' | 'down'
@@ -108,7 +108,7 @@ def vmget():
     data = acquire(timeRamp)
     if ramp_direction == 'down':
         data = np.flip(data)
-    data = ua.gaussian(data, 2)
+    data = ua.gaussian(data, 1)
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_direction}", xsweep=sweep,
