@@ -36,3 +36,10 @@ except ImportError:
 # Garbage
 import gc
 ramasse_miette = gc.collect
+
+# Notify-run
+try:
+    from notify_run import Notify
+    notify = Notify(endpoint="https://notify.run/WvLaaa2BYb9iSBM3tM5R")
+except ImportError:
+    pass
