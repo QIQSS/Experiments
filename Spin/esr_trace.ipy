@@ -1,6 +1,6 @@
 # %%
 # -*- coding: utf-8 -*-
-OS = 'w' # 'l' | 'w'
+OS = 'l' # 'l' | 'w'
 LS_PATH, LOG_PATH = \
             {'w':['C:/Codes/Lab-Scripts', 
                   '//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/'],
@@ -23,10 +23,22 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib
 
-# %% 20240911 drive nuit 351 points (incomplet)
-days = [f"{LS_PATH}/Spin/logs/{d}" for d in ('20240910', '20240911')]
-files = uf.fileIn(days, contains='nuit')
+# %% 20240912 drive pic 225 
+days = [f"{LOG_PATH}/{d}" for d in ('20240911', '20240912')]
+files = uf.fileIn(days, contains='drive_pic225')
 
+# %%% fix file size:
+# sample rate was way too high (1Ms/s) which lead to huge files => down sample and resave.
+for fname in tqdm(files):
+    d = uf.loadNpz(fname)
+    if d.array.shape[1] >= 70000: 
+        print('downsampling...')
+        downsampled_arr = d.array[:, ::10] # 100]
+        uf.saveToNpz('', fname, downsampled_arr, metadata=d.metadata, make_date_folder=False, prepend_date=False)
+    else:
+        print('skipping')
+        
+# %%% analyse:
 # same pulse time as 20240910
 npz = uf.loadNpz(files[0])
 timelist = np.linspace(0, 0.07, len(npz.array[0]))
@@ -52,10 +64,62 @@ def pl(file):
     
     return npz.rget('freq'), p_flip, nb_singlet
 
+respic225 = [pl(file) for file in tqdm(files)]
+#uf.saveToNpz(LOG_PATH+'/20240912', 'res_drive_pic225', np.asarray(respic225), make_date_folder=False)
+
+# %% plot
+respic225 = uf.loadNpz(LOG_PATH+'20240912/20240912-154654-res_drive_pic225.npz').array
+fig, ax = plt.subplots(figsize=(10,4))
+ax.plot(respic225[:,0]*1e-9, respic225[:,1], marker='o', linestyle='--')
+
+ax.text(0.02, 0.98, 
+        "Step size: 2Mhz\nChirp width: 0Mhz\n700 traces / points",
+        color='black', fontsize=10, ha='left', va='top', transform=ax.transAxes)
+
+ax.set_xlabel('frequence (GHz)')
+ax.set_ylabel('$P_{flip}$')
+
+#ax.legend()
+ax.grid()
+fig.show()
+
+
+# %% 20240911 drive nuit 351 points (incomplet)
+days = [f"{LOG_PATH}/{d}" for d in ('20240910', '20240911', '20240912')]
+files = uf.fileIn(days, contains='nuit')
+
+
+def pl(file):
+    npz = uf.loadNpz(file)
+    
+    # not the same sample rate across all files so this is inside the loop:
+    timelist = np.linspace(0, 0.07, len(npz.array[0]))
+    slice_read1 = slice(ua.findNearest(timelist, 0.02, 'id'), ua.findNearest(timelist, 0.04, 'id'))
+    slice_read2 = slice(ua.findNearest(timelist, 0.05, 'id'), None)
+    # ###
+
+    read1 = npz.array[:,slice_read1]
+    read2 = npz.array[:,slice_read2]
+    
+    read1clas = ua.autoClassify(read1, width_tolerance=10, prominence_factor=0.04)
+    read2clas = ua.autoClassify(read2, width_tolerance=10, prominence_factor=0.04)
+
+    ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
+    
+    old_triplet_read2 = ua.multiget(read2clas, ids_triplet_read1)
+    ids_triplet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 0)]
+    
+    nb_singlet = len(old_triplet_read2) - len(ids_triplet_read2) 
+    
+    p_flip = nb_singlet / len(old_triplet_read2)
+    
+    return npz.rget('freq'), p_flip, nb_singlet
+
 resnuit = [pl(file) for file in tqdm(files)]
+#uf.saveToNpz(LOG_PATH+'/20240912', 'res_drive_nuit', np.asarray(resnuit), make_date_folder=False)
 
 # %%% plot
-resnuit = np.asarray(resnuit)
+resnuit = uf.loadNpz(LOG_PATH+'20240912/20240912-154554-res_drive_nuit.npz').array
 fig, ax = plt.subplots(figsize=(10,4))
 ax.plot(resnuit[:,0]*1e-9, resnuit[:,1], marker='o', linestyle='--')
 
@@ -72,7 +136,7 @@ fig.show()
 
 # %% 20240910 drive sweep coarse
 files = uf.fileIn(LOG_PATH + '20240910/', contains=('drive'))
-files = [f for f in files if not 'drive_test' in f]
+files = [f for f in files if not 'drive_test' in f and not 'drive_nuit' in f]
 
 # global things
 npz = uf.loadNpz(files[0])
@@ -106,9 +170,9 @@ def pl(file):
     return npz.rget('freq'), p_flip, nb_singlet
 
 res = [pl(file) for file in tqdm(files)]
-
+#uf.saveToNpz(LOG_PATH+'/20240910', 'res_drive', np.asarray(res), make_date_folder=False)
 # %%% plot
-res = np.asarray(res)
+res = uf.loadNpz(LOG_PATH+'/20240910/20240912-154422-res_drive.npz').array
 fig, ax = plt.subplots(figsize=(10,4))
 ax.plot(res[:,0]*1e-9, res[:,1], marker='o', linestyle='--')
 
@@ -122,6 +186,26 @@ ax.set_ylabel('$P_{flip}$')
 #ax.legend()
 ax.grid()
 fig.show()
+
+# %% plot all above
+resnuit = np.asarray(resnuit)
+respic225 = np.asarray(respic225)
+res = np.asarray(res)
+
+fig, ax = plt.subplots(figsize=(10,4))
+ax.plot([], [], label='chirp:', linestyle='')
+ax.plot(resnuit[:,0]*1e-9, resnuit[:,1], marker='o', linestyle='--', color='blue', label="32Mhz",)
+ax.plot(res[:,0]*1e-9, res[:,1], marker='o', linestyle='--', color='green', label="32Mhz")
+ax.plot(respic225[:,0]*1e-9, respic225[:,1], marker='o', linestyle='--', color='red', label="0Mhz")
+
+ax.set_xlabel('frequence (GHz)')
+ax.set_ylabel('$P_{flip}$')
+ax.set_ylim(ymin=0)
+
+ax.legend()
+ax.grid()
+fig.show()
+
 
 # %% testing on a file with drive
 file = uf.loadNpz(LOG_PATH + '20240910/20240910-150828-drive_test.npz')
