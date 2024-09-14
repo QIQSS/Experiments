@@ -48,8 +48,10 @@ ats.nbwindows.set(1)
 ats.trigger_delay.set(0)
 def acquire(acq_time):
     ats.run_and_wait()
+    wait(0.1)
     awg.write('TRIGger BTRigger')
     wait(acq_time)
+    wait(0.1)
     data = ats.fetch.get()[2]
     return data
 
@@ -65,14 +67,14 @@ psg = instruments.agilent_rf_PSG('GPIB1::19::INSTR')
 # %% 31 - 30 - 31 - read - 31:pulse - read
 ##### settings
 #   (P1  ,  P2)
-_read = (+0.01085 , -0.001)
+_read = (+0.0106 , -0.001)
 _31 = (0.0, +0.002 ) #(-0.013, +0.000)
 _30 = (-0.006, -0.006)
 #_40 = (+0.010, 0)
 
-t31, t31d, t30, tread = 0.01, 0.010, 0.01, 0.02
+t31, t31d, t30, tread = 0.01, 0.015, 0.01, 0.02
 
-tbefore = 0.02
+tbefore = 0.025
 
 # vm
 read_level = {'P1': 1.086, 'P2': 0.598}
@@ -100,9 +102,11 @@ pulseP2.addCompensationZeroMean(value=+0.005)
 pulseSR = Pulse(name='ESR', shape_comp=False)
 pulseSR.add(tbefore)
 pulseSR.add(t30+t31+tread)
-pulseSR.add(t31d/4)
+pulseSR.add(t31d/8)
+pulseSR.add(t31d/8, mark=True)
 pulseSR.addRamp(t31d/2, -.75/awg.gain, +.75/awg.gain, mark=True)
-pulseSR.add(t31d/4, mark=True)
+pulseSR.add(t31d/8, mark=True)
+pulseSR.add(t31d/8)
 pulseSR.add(tread, mark=False)
 
 pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
@@ -143,27 +147,20 @@ psg.write(f'FM1:DEViation {freq_deviation}')
 #psg.mod_fm_en.set(True)
 #psg.rf_en.set(True)
 
-# %% sweep drive large
+# %% sweep drive
 psg.mod_fm_en.set(True)
-freq_points = np.linspace(21.3e9, 23e9, 351)
-nb_traces = 700
-flbl = 'nuit'
-
-runcell('sweep drive frequence', 'C:/Codes/Lab-Scripts/Spin/esr.ipy')
-
-# %% sweep drive moins large, sans modulation
-freq_points = np.linspace(22.2e9, 22.7e9, 251)
-nb_traces = 700
-flbl = 'pic225'
-
-psg.mod_fm_en.set(False)
+freq_points = np.linspace(22.32e9, 22.40e9, 401)
+nb_traces = 400
+psg.ampl.set(-28)
+psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=2e6))
+flbl = 'zoom1'
 
 runcell('sweep drive frequence', 'C:/Codes/Lab-Scripts/Spin/esr.ipy')
 
 # %% sweep drive frequence
 """ args: freq_points, nb_traces, flbl """
 for i, freq in tqdm(enumerate(freq_points), total=len(freq_points)):
-    if i <= 210: continue
+    if i <= 22: continue
 
     psg.freq_cw.set(freq)
     
@@ -171,6 +168,7 @@ for i, freq in tqdm(enumerate(freq_points), total=len(freq_points)):
                           xlabel="time", 
                           axes_dict={'x': acq_time},
                           play=True, pause_after_one=True, take_focus=True, show=True)
+    wait(1)
 
     traces = np.array(vm.data_buffer[0].T)
 
@@ -180,9 +178,3 @@ for i, freq in tqdm(enumerate(freq_points), total=len(freq_points)):
            y_label='count', x_label='time (s)', cbar=False)
 
     vm.close()
-    del vm
-    del traces
-    ramasse_miette()
-    
-    wait(0.5)
-        
