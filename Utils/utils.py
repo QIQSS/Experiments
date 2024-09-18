@@ -40,7 +40,14 @@ class customDict(dict):
     
     def __init__(self, *arg, **kw):
         super(customDict, self).__init__(*arg, **kw)
-        
+        #self._convert_nested_dicts()
+    
+    def _convert_nested_dicts(self):
+        """ Convert all nested dictionaries to customDict instances. """
+        for key, value in self.items():
+            if isinstance(value, dict):
+                self[key] = customDict(value)
+            
     def __getattr__(self, key):
         return self[key]
     
@@ -61,6 +68,18 @@ class customDict(dict):
                     return val
             return default
         return _searchKey(self, key)
+    
+
+class ModuloList(list):
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            index %= len(self)
+        return super().__getitem__(index)
+
+    def __setitem__(self, index, value):
+        if isinstance(index, int):
+            index %= len(self)
+        super().__setitem__(index, value)
 
 import sys
 import matplotlib.pyplot as plt

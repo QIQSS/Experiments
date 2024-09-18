@@ -19,6 +19,7 @@ from . import utils as uu
 
 
 def linlen(arr, end=None):
+    """ linspace "ids of arr" """
     if end is None:
         end = len(arr)
     return np.linspace(0, end, len(arr))
@@ -265,9 +266,10 @@ def findClassifyingThreshold(double_gaussian_parameters,
     return th
 
 def findPeaks(points, show_plot=False, 
+              prominence=1,
               **scipy_kwargs):
     import scipy
-    peaks, properties = scipy.signal.find_peaks(points, **scipy_kwargs)
+    peaks, properties = scipy.signal.find_peaks(points, prominence=prominence, **scipy_kwargs)
     
     if show_plot:
         plt.figure(figsize=(10, 6))
@@ -281,13 +283,18 @@ def findPeaks(points, show_plot=False,
         plt.show()
     return peaks, properties
 
-def autoClassify(array, width_tolerance=0, prominence_factor=0.03, verbose=0):
+def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.03, verbose=0):
     """ automated histogram, peaks analysis, gaussian fit then classify """
+    array = gaussianlbl(array, sigma=filter_sigma)
     bins, hist = histogram(array, return_type='all')
     peaks, prop = findPeaks(hist, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
 
+    if len(peaks) == 3:
+        print("3 peaks found, trying with a sigma = 2*sigma")
+        return autoClassify(array, filter_sigma*2, width_tolerance, prominence_factor, verbose)
     if len(peaks) != 2:
         print(f"{uu.fname()}: nb peaks != 2, can't classify")
+        
         return False
 
     p0 = [0.4, 0.4, bins[peaks[0]], bins[peaks[1]], hist[peaks[0]], hist[peaks[1]]]
