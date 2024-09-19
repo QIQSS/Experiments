@@ -17,8 +17,31 @@ from . import utils as uu
 
 import matplotlib.colors as mcolors
 
-COLORS = ['#029ac3', '#ffba1e', '#59a694', '#fe66ca', '#cd93f9']
-COLORS_D = ['#5b1d2c', '#c6e1ea', '#505c76', '#162067', '#070c20']
+COLORS = uu.ModuloList(['#029ac3', '#ffba1e', '#59a694', '#fe66ca', '#cd93f9'])
+COLORS = uu.ModuloList([
+    '#019CDE',  # Finn's shirt, blue1
+    '#FEB825',  # Jake's fur, yellow1
+    '#BC9DC9',  # LSP, purple
+    '#23B1A5',  # BMO's body, greenish blue
+    '#F53E51', # Flame princess accent, reddish pink
+    
+    '#006DB5',  # Finn's shirt, blue2 
+    '#ECE966',  # Tree trunk, yellow2
+    '#F171AA',  # Princess Bubblegum, pink   
+    '#A6D39A', # Finn's backpack, green1
+    '#EE4622', # Flame princess, orange red
+    
+    #'#00205B', # Marcelin's hair2, dark blue
+    '#4DB2CD', # BMO's arm, blue
+    '#FECF4D', # Fiona's hair, yellow
+    '#F898A3', # Wildberry princess, pink
+    '#6CB249', # Finn's backpack, green2
+    '#5A1D2D', # Marcelin's boots, purple
+    
+    #'#620661', # Marcelin's mouth, dark purple
+    
+])
+COLORS_D = uu.ModuloList(['#5b1d2c', '#c6e1ea', '#505c76', '#162067', '#070c20'])
 
 
 #### IMSHOW
@@ -540,6 +563,40 @@ def scatter(tuplelist, x_id=0, y_id=1, val_id=2):
     cbar = plt.colorbar(sc, ax=ax, label='T1 (s)')
     plt.show()
 
+#### MOD FIG
+
+def legend_lines_toggle(fig, ax):
+    fig = _modFig(fig)
+    
+    leg = ax.legend()
+    lines = list(ax.lines)
+    
+    leg_to_plot = {}
+    for i, (legline, line) in enumerate(zip(leg.get_lines(), lines)):
+        legline.set_picker(True)
+        textline = leg.get_texts()[i]
+        textline.set_picker(True)
+        leg_to_plot[legline] = (line, legline, textline)
+        leg_to_plot[textline] = (line, legline, textline)
+        
+    def on_pick(event):
+        artist = event.artist
+        if artist in leg_to_plot:
+            line, legline, text = leg_to_plot[artist]
+            
+            visible = not line.get_visible()
+            line.set_visible(visible)
+            text.set_alpha(1.0 if visible else 0.2)
+            legline.set_alpha(1.0 if visible else 0.2)
+            fig.canvas.draw()
+
+    fig.canvas.mpl_connect('pick_event', on_pick)
+
+def cursor_hover(fig, ax):
+    import mplcursors
+    for line in ax.lines:
+        cursor = mplcursors.cursor(line, hover=True)
+        
 
 #### SPECIAL CASE PLOTS
 

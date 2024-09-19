@@ -97,13 +97,12 @@ def saveToNpz(path, filename, array, metadata={},
                 metadata[key] = val.get()
 
     metadata['_filename'] = timestamp+filename
-    
     # saving zip
     np.savez_compressed(fullname, array=array, metadata=metadata)
     
     print('Saved file to: ' + fullname)
     return fullname+'.npz'
-    
+
 
 #### pyHegel files
 

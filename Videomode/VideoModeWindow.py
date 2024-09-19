@@ -58,6 +58,9 @@ class VideoModeWindow(QMainWindow):
         -------
         None.
 
+
+        Known issue: pause_after_one is actually "auto_press_pause_after_one_frame"
+                     which means it also take one trace of the second frame.
         """
         super().__init__()
         self.frame_count = 0
