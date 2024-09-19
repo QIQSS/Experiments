@@ -62,6 +62,8 @@ def plotdrive(filename, lbl=None, x_label='frequence (GHz)', x_factor=1e-9):
     ax.set_xlabel(x_label)
     ax.set_ylabel('$P_{flip}$')
     
+    up.cursor_hover(fig, ax)
+    
     #ax.legend()
     ax.grid()
     fig.show()
@@ -636,7 +638,7 @@ for i, file in tqdm(enumerate(files), total=len(files)):
     picchirp4.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
 
 # tdrive = 800um
-uf.saveToNpz(LOG_PATH+'results', 'picchirp4', resfocus3, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+uf.saveToNpz(LOG_PATH+'results', 'picchirp4', picchirp4, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
 picchirp4 = uf.loadNpz(LOG_PATH+"results/picchirp4.npz").array
 plotdrive('picchirp4', x_label='frequence (GHz)', x_factor=1e-9)
 
@@ -644,7 +646,7 @@ plotdrive('picchirp4', x_label='frequence (GHz)', x_factor=1e-9)
 days = [f"{LOG_PATH}/{d}" for d in ('20240918',)]
 files = uf.fileIn(days, contains='picchirp1')
 
-lbl = "Chirp 4Mhz\n500 traces / points\n-20dBm"
+lbl = "Chirp 1Mhz\n500 traces / points\n-20dBm"
 
 npz = uf.loadNpz(files[0])
 timelist = np.linspace(0, 0.065, len(npz.array[0]))
@@ -659,25 +661,126 @@ for i, file in tqdm(enumerate(files), total=len(files)):
     picchirp1.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
 
 # tdrive = 800um
-uf.saveToNpz(LOG_PATH+'results', 'picchirp1', resfocus3, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+uf.saveToNpz(LOG_PATH+'results', 'picchirp1', picchirp1, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
 picchirp1 = uf.loadNpz(LOG_PATH+"results/picchirp1.npz").array
 plotdrive('picchirp1', x_label='frequence (GHz)', x_factor=1e-9)
 
+# %% 20240918 drive court pic zoom3
+days = [f"{LOG_PATH}/{d}" for d in ('20240918',)]
+files = uf.fileIn(days, contains='picchirp0_')
+
+lbl = "Chirp 0Mhz\n500 traces / points\n-20dBm"
+
+npz = uf.loadNpz(files[0])
+timelist = np.linspace(0, 0.065, len(npz.array[0]))
+slice_read1 = slice(ua.findNearest(timelist, 0.02, 'id'), ua.findNearest(timelist, 0.04, 'id'))
+slice_read2 = slice(ua.findNearest(timelist, 0.045, 'id'), ua.findNearest(timelist, 0.064, 'id'))
+
+picchirp0 = []
+for i, file in tqdm(enumerate(files), total=len(files)):
+    if i < 0: continue
+    npz = uf.loadNpz(file)
+    p_flip, nb_singlet, nb_count = pl_loaded(npz, slice_read1, slice_read2, timelist)
+    picchirp0.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
+
+# tdrive = 800um
+uf.saveToNpz(LOG_PATH+'results', 'picchirp0', picchirp0, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+picchirp0 = uf.loadNpz(LOG_PATH+"results/picchirp0.npz").array
+plotdrive('picchirp0', x_label='frequence (GHz)', x_factor=1e-9)
+
+# %% 20240918 drive court pic zoom4
+days = [f"{LOG_PATH}/{d}" for d in ('20240918',)]
+name = 'picchirp05'
+files = uf.fileIn(days, contains=name)
+
+lbl = "Chirp 0Mhz\n500 traces / points\n-20dBm"
+
+npz = uf.loadNpz(files[0])
+timelist = np.linspace(0, 0.065, len(npz.array[0]))
+slice_read1 = slice(ua.findNearest(timelist, 0.02, 'id'), ua.findNearest(timelist, 0.04, 'id'))
+slice_read2 = slice(ua.findNearest(timelist, 0.045, 'id'), ua.findNearest(timelist, 0.064, 'id'))
+
+picchirp05 = arr = []
+for i, file in tqdm(enumerate(files), total=len(files)):
+    if i < 0: continue
+    npz = uf.loadNpz(file)
+    p_flip, nb_singlet, nb_count = pl_loaded(npz, slice_read1, slice_read2, timelist)
+    picchirp05.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
+
+# tdrive = 800um
+uf.saveToNpz(LOG_PATH+'results', name, arr, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+picchirp05 = uf.loadNpz(LOG_PATH+f"results/{name}.npz").array
+plotdrive(name, x_label='frequence (GHz)', x_factor=1e-9)
+
+# %% 20240918 drive court pic zoom5
+days = [f"{LOG_PATH}/{d}" for d in ('20240918',)]
+name = 'picchirp001'
+arr = picchirp001 = []
+files = uf.fileIn(days, contains=name)
+
+lbl = "Chirp 10khz\n500 traces / points\n-20dBm"
+
+npz = uf.loadNpz(files[0])
+timelist = np.linspace(0, 0.065, len(npz.array[0]))
+slice_read1 = slice(ua.findNearest(timelist, 0.02, 'id'), ua.findNearest(timelist, 0.04, 'id'))
+slice_read2 = slice(ua.findNearest(timelist, 0.045, 'id'), ua.findNearest(timelist, 0.064, 'id'))
+
+for i, file in tqdm(enumerate(files), total=len(files)):
+    if i < 0: continue
+    npz = uf.loadNpz(file)
+    p_flip, nb_singlet, nb_count = pl_loaded(npz, slice_read1, slice_read2, timelist)
+    arr.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
+
+# tdrive = 800um
+uf.saveToNpz(LOG_PATH+'results', name, arr, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+picchirp001 = uf.loadNpz(LOG_PATH+f"results/{name}.npz").array
+plotdrive(name, x_label='frequence (GHz)', x_factor=1e-9)
+
+# %% 20240918 drive court pic zoom6
+days = [f"{LOG_PATH}/{d}" for d in ('20240918',)]
+name = 'picchirp005'
+arr = picchirp005 = []
+files = uf.fileIn(days, contains=name)
+
+lbl = "Chirp 50khz\n500 traces / points\n-20dBm"
+
+npz = uf.loadNpz(files[0])
+timelist = np.linspace(0, 0.065, len(npz.array[0]))
+slice_read1 = slice(ua.findNearest(timelist, 0.02, 'id'), ua.findNearest(timelist, 0.04, 'id'))
+slice_read2 = slice(ua.findNearest(timelist, 0.045, 'id'), ua.findNearest(timelist, 0.064, 'id'))
+
+for i, file in tqdm(enumerate(files), total=len(files)):
+    if i < 0: continue
+    npz = uf.loadNpz(file)
+    p_flip, nb_singlet, nb_count = pl_loaded(npz, slice_read1, slice_read2, timelist)
+    arr.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
+
+arr = np.array(arr)
+sorted_indices = np.argsort(arr[:, 0])
+arr = arr[sorted_indices]
+uf.saveToNpz(LOG_PATH+'results', name, arr, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+picchirp005 = uf.loadNpz(LOG_PATH+f"results/{name}.npz").array
+plotdrive(name, x_label='frequence (GHz)', x_factor=1e-9)
 # %% plot freqpower, piczooms
 fig, ax = plt.subplots(figsize=(10,4))
 
 power_points = [-35,-30,-25,-20,-15]
+lbl = "Chirp 8Mhz\n500 traces / points"
 
 ax.plot([], [], label='dBm:', linestyle='')
 for i in range(5):
     ax.plot(resfp1[::-1][i*38:(i+1)*38,0]*1e-9, resfp1[::-1][i*38:(i+1)*38,2], 
             marker='o', linestyle='--', color=up.COLORS[i], label=f"{power_points[::-1][i]}")
 #ax.scatter(respower[:,0]*1e-9, respower[:,1], c=respower[:,2],s=100)
-ax.plot(picchirp4[::,0]*1e-9, picchirp4[::,1], label="Chirp 4Mhz\n500 traces / points\n-20dBm", marker='o', linestyle='--', color=up.COLORS[6],)
-#ax.plot(picchirp1[::,0]*1e-9, picchirp1[::,1], label="Chirp 1Mhz\n500 traces / points\n-20dBm", marker='o', linestyle='--', color=up.COLORS[7],)
-ax.text(0.02, 0.98, 
-        lbl,
-        color='black', fontsize=10, ha='left', va='top', transform=ax.transAxes)
+ax.plot(picchirp4[::,0]*1e-9, picchirp4[::,1], label="Chirp 4Mhz\n-20dBm", marker='o', linestyle='--', color=up.COLORS[6],)
+ax.plot(picchirp1[::,0]*1e-9, picchirp1[::,1], label="Chirp 1Mhz\n-20dBm", marker='o', linestyle='--', color=up.COLORS[7],)
+ax.plot(picchirp0[::,0]*1e-9, picchirp0[::,1], label="Chirp 0Mhz\n-20dBm", marker='o', linestyle='--', color=up.COLORS[8],)
+ax.plot(picchirp05[::,0]*1e-9, picchirp05[::,1], label="Chirp 0.5Mhz\n-20dBm", marker='o', linestyle='--', color=up.COLORS[9],)
+ax.plot(picchirp001[::,0]*1e-9, picchirp001[::,1], label="Chirp 10khz\n-20dBm", marker='o', linestyle='--', color=up.COLORS[10],)
+ax.plot(picchirp005[::,0]*1e-9, picchirp005[::,1], label="Chirp 50khz\n-20dBm", marker='o', linestyle='--', color=up.COLORS[11],)
+
+
+ax.text(0.02, 0.98, lbl, color='black', fontsize=10, ha='left', va='top', transform=ax.transAxes)
 
 up.legend_lines_toggle(fig, ax)
 ax.set_xlabel('frequence (GHz)')
@@ -685,6 +788,31 @@ ax.set_ylabel('$P_{flip}$')
 ax.grid()
 fig.show()
 
+# %% 20240919 drive court nuit 3
+days = [f"{LOG_PATH}/{d}" for d in ('20240918','20240919',)]
+name = 'nuit3'
+arr = nuit3 = []
+files = uf.fileIn(days, contains=name)
+
+lbl = "Chirp 32Mhz\nStep 16Mhz\nPower -20dBm\nTraces 500"
+
+npz = uf.loadNpz(files[0])
+timelist = np.linspace(0, 0.065, len(npz.array[0]))
+slice_read1 = slice(ua.findNearest(timelist, 0.02, 'id'), ua.findNearest(timelist, 0.04, 'id'))
+slice_read2 = slice(ua.findNearest(timelist, 0.045, 'id'), ua.findNearest(timelist, 0.064, 'id'))
+
+for i, file in tqdm(enumerate(files), total=len(files)):
+    if i < 0: continue
+    npz = uf.loadNpz(file)
+    p_flip, nb_singlet, nb_count = pl_loaded(npz, slice_read1, slice_read2, timelist)
+    arr.append([npz.rget('freq'), p_flip, nb_singlet, nb_count])
+
+arr = np.array(arr)
+sorted_indices = np.argsort(arr[:, 0])
+arr = arr[sorted_indices]
+uf.saveToNpz(LOG_PATH+'results', name, arr, metadata={'lbl':lbl}, make_date_folder=False, prepend_date=False)
+nuit3 = uf.loadNpz(LOG_PATH+f"results/{name}.npz").array
+plotdrive(name, x_label='frequence (GHz)', x_factor=1e-9)
 # %% find peaks
 arr = reszoom2
 peaks, prop = ua.findPeaks(arr[::,1], prominence=0.1, show_plot=False)
@@ -710,6 +838,9 @@ ax.plot(reslarge1[:,0]*1e-9, reslarge1[:,1], color=up.COLORS[9], label="16Mhz, 5
 ax.plot(resfocus1[:,0]*1e-9, resfocus1[:,1], color=up.COLORS[10], label="10Mhz, 500traces, -28dBm",**kw),
 ax.plot(resfocus2[:,0]*1e-9, resfocus2[:,1], color=up.COLORS[11], label="10Mhz, 500traces, -28dBm",**kw),
 ax.plot(resfocus3[:,0]*1e-9, resfocus3[:,1], color=up.COLORS[12], label="2Mhz, 500traces, -28dBm",**kw),
+ax.plot(picchirp1[:,0]*1e-9, picchirp1[:,1], color=up.COLORS[13], label="1Mhz, 500traces, -20dBm",**kw),
+ax.plot(picchirp4[:,0]*1e-9, picchirp4[:,1], color=up.COLORS[14], label="4Mhz, 500traces, -20dBm",**kw),
+ax.plot(picchirp001[::,0]*1e-9, picchirp001[::,1], label="10khz, 500traces, -20dBm", **kw, color=up.COLORS[15],)
 ]
 
 # for freq in freqs:

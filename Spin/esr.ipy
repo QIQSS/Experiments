@@ -16,6 +16,7 @@ from Utils import files as uf
 from Utils import plot as up
 from Utils import instruments as ui
 from Utils import utils as uu
+from Utils import measure as um
 
 from Utils.plot import imshow
 from Pulses.Builder import Pulse, genPWLFile
@@ -226,4 +227,36 @@ for i, f in tqdm(enumerate(points), total=(len(points))):
            y_label='count', x_label='time (s)', cbar=False)
 
     vm.close()
+
+# %% sweep meas WIP WIP WIP
+freq = np.arange(22.364e9, 22.375e9, 0.45e6)[1:]
+points = freq
+# power = [-35, -30, -25, -20, -15]
+# points = [(p, f) for p in power for f in freq]
+
+
+nb_traces = 500
+chirp = 1e6
+ampl = -20
+description = """
+"""
+meas = um.Measure(LOG_PATH, 'measure1', metadata=dict(nb_traces=nb_traces, chirp=chirp, ampl=ampl, description=description))
+
+
+#psg.freq_cw.set(21.86e9)
+psg.mod_fm_en.set(True)
+psg.ampl.set(ampl)
+psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
+
+for i, f in tqdm(enumerate(points), total=(len(points))):
     
+    psg.freq_cw.set(f)
+    
+    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=nb_traces,
+                          xlabel="time", 
+                          axes_dict={'x': acq_time},
+                          play=True, pause_after_one=True, take_focus=True, show=True)
+    wait(.1)
+    traces = np.array(vm.data_buffer[0].T)
+    meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=freq))
+    vm.close()

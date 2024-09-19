@@ -102,7 +102,7 @@ def saveToNpz(path, filename, array, metadata={},
     
     print('Saved file to: ' + fullname)
     return fullname+'.npz'
-    
+
 
 #### pyHegel files
 

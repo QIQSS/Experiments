@@ -592,7 +592,11 @@ def legend_lines_toggle(fig, ax):
 
     fig.canvas.mpl_connect('pick_event', on_pick)
 
-    
+def cursor_hover(fig, ax):
+    import mplcursors
+    for line in ax.lines:
+        cursor = mplcursors.cursor(line, hover=True)
+        
 
 #### SPECIAL CASE PLOTS
 
