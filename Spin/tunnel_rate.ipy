@@ -186,7 +186,8 @@ pts = [acquire(acq_time) for _ in alive_it(range(800), spinner=None)]
 filename = uf.saveToNpz(LOG_PATH, '800traces_B2=850mV', pts, metadata=dict(pulse=str(pulseStep), p1=rhP1, p2=rhP2, t_acq=acq_time))
 
 # %% fit 1
-d = uf.loadNpz('C:\\Codes\\Lab-Scripts/Logs/20240829/20240829-173232-800traces_B2=850mV')
+BOB = r"Z:\Dupont-Ferrier\Projets\IMEC_DD_reflecto\QBB16_SD11b_3\Spin/"
+d = uf.loadNpz(BOB+r'20240829/20240829-173232-800traces_B2=850mV')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
 x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
@@ -260,7 +261,7 @@ filename = uf.saveToNpz(LOG_PATH, '800traces_TC=500n_p1', pts, metadata=dict(pul
 
 # %% fit
 
-d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-155447-800traces_TC=1u')
+d = uf.loadNpz(BOB+'20240820/20240820-155447-800traces_TC=1u')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
 x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
@@ -271,7 +272,7 @@ yy=y[5000:5300]
 fit.fitplot(f,xx,yy,p0=[0.56e-6,1,-0.005,-46],noadjust=[]) 
 
 # %% fit 
-d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-160336-800traces_TC=500n')
+d = uf.loadNpz(BOB+'20240820/20240820-160336-800traces_TC=500n')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
 x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))
@@ -283,7 +284,7 @@ yy=y[5000:5300]
 fit.fitplot(f,xx,yy,p0=[0.56e-6,1,-0.005,-46],noadjust=[]) 
 
 # %% fit
-d = uf.loadNpz('C:\Codes\Lab-Scripts/Logs/20240820/20240820-162229-800traces_TC=500n_p1')
+d = uf.loadNpz(BOB+'20240820/20240820-162229-800traces_TC=500n_p1')
 arr = d.get('array')
 y = np.mean(arr, axis=0)
 x = np.linspace(0, d.get('metadata').get('t_acq'), len(y))

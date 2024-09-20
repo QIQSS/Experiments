@@ -66,7 +66,7 @@ psg = instruments.agilent_rf_PSG('GPIB1::19::INSTR')
 # %% 31 - 30 - 31 - read - 31:pulse - read
 ##### settings
 #   (P1  ,  P2)
-_read = (+0.011 , -0.00)
+_read = (+0.0105 , -0.00)
 _31 = (0.0, +0.002 ) #(-0.013, +0.000)
 _30 = (-0.006, -0.007)
 #_40 = (+0.010, 0)
@@ -74,14 +74,14 @@ _30 = (-0.006, -0.007)
 
 t31, t31d, t30, tread = 0.01, 0.015, 0.01, 0.02
 t31, t31d, t30, tread = 0.01, 0.005, 0.01, 0.02
-tdrive = 0.000_8
+tdrive = 0.000_4
 #t31, t31d, t30, tread = 0.01, 0.000_2, 0.01, 0.02
 
-tbefore = 0.05
+tbefore = 0.02
 
 # vm
 #read_level = {'P1': 1.086, 'P2': 0.598}
-read_level = {'P1': 1.08, 'P2': 0.594}
+read_level = {'P1': 1.0861, 'P2': 0.594}
 filt = 2 # gaussian filter
 ##############
 
@@ -149,102 +149,32 @@ psg.write(f'FM1:DEViation {freq_deviation}')
 #psg.mod_fm_en.set(True)
 #psg.rf_en.set(True)
 
-# %% sweep drive
-freq_points = np.linspace(19.5e9, 22.5e9, 401)
+
+# %% sweep meas
+#freqs = [20.146,20.386,20.482,20.834,21.362,21.507,21.714,21.843,22.098,22.162,22.260,22.386,22.466,22.546,22.755,22.882,23.022,23.154,23.362,23.666,23.980]
+#freqs = np.array(freqs)*1e9
+#freqs = np.arange(15.77e9, 17.77e9, 16e6); print(len(freqs))
+freqs = np.arange(16.27e9, 17.27e9, 16e6); print(len(freqs))
+
+#powers = [-15, -10, -5]
+#points = [(p, f) for p in powers for f in freqs]
+
+points = freqs
+
+name = 'b600m_groschirp'
 nb_traces = 500
-psg.ampl.set(-28)
-psg.mod_fm_en.set(True)
-psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=16e6))
-
-flbl = 'large1'
-
-runcell('sweep drive frequence', 'C:/Codes/Lab-Scripts/Spin/esr.ipy')
-
-# %% sweep 2d
-freq_points = np.linspace(22.3615e9, 22.3675e9, 151)
-power_points = np.linspace(-18, -28, 6)[::-1]
-points = [(p, f) for p in power_points for f in freq_points]
-nb_traces = 300
-flbl = 'power'
-psg.mod_fm_en.set(False)
+chirp = 32e6
+ampl = -5
+description = """de 0.8T à 0.6T"""
 
 
-for i, (p, f) in tqdm(enumerate(points), total=(len(points))):
-    #print(i,p,f)
-    #continue
-    psg.ampl.set(p)
-    psg.freq_cw.set(freq)
-    
-    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=nb_traces,
-                          xlabel="time", 
-                          axes_dict={'x': acq_time},
-                          play=True, pause_after_one=True, take_focus=True, show=True)
-    wait(.5)
-
-    traces = np.array(vm.data_buffer[0].T)
-
-    imshow(traces, save=True, path=LOG_PATH, show=False,
-           metadata=dict(freq=f, power=p),
-           filename=f"drive_{flbl}_{i}", x_axis=acq_time,
-           y_label='count', x_label='time (s)', cbar=False)
-
-    vm.close()
-    
-# %% sweep
-freq = np.arange(20.05e9, 24.1e9, 16e6)
-points = freq
-# power = [-35, -30, -25, -20, -15]
-# points = [(p, f) for p in power for f in freq]
+#####
+meas = um.Measure(LOG_PATH, name, metadata=
+                  dict(nb_traces=nb_traces, 
+                       chirp=chirp, ampl=ampl, description=description, tdrive=tdrive,
+                       champs=0.6))
 
 
-nb_traces = 500
-flbl = 'picchirp005'
-#psg.freq_cw.set(21.86e9)
-psg.mod_fm_en.set(True)
-psg.ampl.set(-20)
-psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=32e6))
-
-
-#for i, (p,f) in tqdm(enumerate(points), total=(len(points))):
-for i, f in tqdm(enumerate(points), total=(len(points))):
-    #print(i,p,f)
-    #continue
-    #psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=p))
-    
-    psg.freq_cw.set(f)
-    #psg.ampl.set(p)
-    
-    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=nb_traces,
-                          xlabel="time", 
-                          axes_dict={'x': acq_time},
-                          play=True, pause_after_one=True, take_focus=True, show=True)
-    wait(.1)
-
-    traces = np.array(vm.data_buffer[0].T)
-
-    imshow(traces, save=True, path=LOG_PATH, show=False,
-           metadata=dict(freq=f),
-           filename=f"drive_{flbl}_{i}", x_axis=acq_time,
-           y_label='count', x_label='time (s)', cbar=False)
-
-    vm.close()
-
-# %% sweep meas WIP WIP WIP
-freq = np.arange(22.364e9, 22.375e9, 0.45e6)[1:]
-points = freq
-# power = [-35, -30, -25, -20, -15]
-# points = [(p, f) for p in power for f in freq]
-
-
-nb_traces = 500
-chirp = 1e6
-ampl = -20
-description = """
-"""
-meas = um.Measure(LOG_PATH, 'measure1', metadata=dict(nb_traces=nb_traces, chirp=chirp, ampl=ampl, description=description))
-
-
-#psg.freq_cw.set(21.86e9)
 psg.mod_fm_en.set(True)
 psg.ampl.set(ampl)
 psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
@@ -259,5 +189,5 @@ for i, f in tqdm(enumerate(points), total=(len(points))):
                           play=True, pause_after_one=True, take_focus=True, show=True)
     wait(.1)
     traces = np.array(vm.data_buffer[0].T)
-    meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=freq))
+    meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=f))
     vm.close()
