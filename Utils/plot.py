@@ -361,6 +361,7 @@ def _modFig(fig):
         if event.key == "ctrl+c":
             figToClipboard()
     fig.canvas.mpl_connect('key_press_event', onKeyPress)
+    
     return fig            
     
 def showPng(binary):
@@ -592,11 +593,27 @@ def legend_lines_toggle(fig, ax):
 
     fig.canvas.mpl_connect('pick_event', on_pick)
 
-def cursor_hover(fig, ax):
+def cursor_hover(fig, ax, visible=False):
     import mplcursors
-    for line in ax.lines:
-        cursor = mplcursors.cursor(line, hover=True)
-        
+    fig.cursor = mplcursors.cursor(ax, hover=True, multiple=False)
+    fig.cursor.visible = visible
+    
+def modFig1d(fig, ax):
+    """
+    keybinds:   c toggle cursors
+                ctrl+c copy to clipboard
+    """
+    
+    fig = _modFig(fig)
+
+    def onKeyPress(event):
+        if event.key == "c":
+            fig.cursor.visible = not fig.cursor.visible
+    fig.canvas.mpl_connect('key_press_event', onKeyPress)
+    
+    cursor_hover(fig, ax)
+    legend_lines_toggle(fig, ax)
+     
 
 #### SPECIAL CASE PLOTS
 

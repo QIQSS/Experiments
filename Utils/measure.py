@@ -7,24 +7,17 @@ from . import utils as uu
 import numpy as np
 
 class Measure:
-    """ a measure object
-    creates a directory for the measure and save a file inside, containing metadata.
+    """ class to handle multi points measures
+
+    creates a directory for the measure and save a file inside containing metadata.
+    then use .saveArray(array, metadata) to save a file in the measure.
     ``` MEASURE
     meas = um.Measure(LOG_PATH, 'measure1')
     for ...:
         array = ...
-        meas.save(array, metadata=dict())
+        meas.saveArray(array, metadata=dict())
     ```
     
-    ``` LOADING
-    f_res, f_points = um.Measure.load(PATH+'/', '20240918-133611-measure1')
-    
-    arr_res = np.array([analyse(p) for p in points])
-    
-    npz_res = uf.loadNpz(f_res)
-    uf.saveToNpz('', f_res, arr_res, metadata=npz_res.metadata, make_date_folder=False, prepend_date=False)
-    
-    ```
 
     
     
@@ -55,8 +48,23 @@ class Measure:
         print(fname)
     
     @staticmethod
-    def load(path, name):
-        files = uf.fileIn(path+name)
-        return files[0], files[1:]
+    def getFiles(path, name):
+        """ find the directory that containes 'name'
+        returns the meas file, followed by the points files
+        """
+        # in path, find directories that contains name:
+        matches = []
+        for dir_name in os.listdir(path):
+            if name in dir_name:
+                matches.append(os.path.join(path, dir_name))
+        if len(matches) > 1:
+            raise Exception(f"More than one directory found for measure {name}: {matches}")
+
+        elif len(matches) == 0:
+            raise Exception(f"Measure {name}: No directory found")
+        
+        directory = matches[0]    
+        files = uf.fileIn(directory)
+        return files[-1], files[:-1]
 
         
