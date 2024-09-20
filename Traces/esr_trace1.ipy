@@ -1,0 +1,111 @@
+# %% imports
+# -*- coding: utf-8 -*-
+OS = 'l' # 'l' | 'w'
+LS_PATH, LOG_PATH = \
+            {'w':['C:/Codes/Lab-Scripts', 
+                  '//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/'],
+             'l':['/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts',
+                  '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/']}\
+            [OS]
+%cd $LS_PATH
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import utils as uu
+from Utils import measure as um
+
+from Utils.plot import imshow, qplot
+from tqdm import tqdm
+from icecream import ic
+
+from pyHegel import fitting as fit
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib
+
+# %% functions
+def blockade_probability(npz, read1, read2):
+    """ take read1 and read2 maps.
+    exclude from read2 all the traces that are singlet in read1
+    count the number of spin blockade in read2
+    returns the blockade probability
+    """
+    read1clas = ua.autoClassify(read1, width_tolerance=10, prominence_factor=0.04)
+    read2clas = ua.autoClassify(read2, width_tolerance=10, prominence_factor=0.04)
+
+    ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
+    
+    old_triplet_read2 = ua.multiget(read2clas, ids_triplet_read1)
+    ids_triplet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 0)]
+    
+    nb_singlet = len(old_triplet_read2) - len(ids_triplet_read2) 
+    
+    p_blockade = nb_singlet / len(old_triplet_read2)
+    
+    return p_blockade, nb_singlet, len(ids_triplet_read1)
+
+def do_analysis(measure_name, x_lbl='freq', 
+                t_acq=0.065, t_read1=[0.02, 0.04], t_read2=[0.045, 0.064],
+                save=False):
+    """ find the files then run blockade_probability() for each.
+    if save: save the result to the meas file
+    """
+    
+    meas_file, point_files = um.Measure.getFiles(LOG_PATH, measure_name)
+
+    res = []
+
+    for i, file in tqdm(enumerate(point_files), total=len(point_files)):
+        if i < 0: continue
+        npz = uf.loadNpz(file)
+
+        if i == 0:
+            timelist = np.linspace(0, 0.065, len(npz.array[0]))
+            slice_read1 = slice(ua.findNearest(timelist, t_read1[0], 'id'), ua.findNearest(timelist, t_read1[1], 'id'))
+            slice_read2 = slice(ua.findNearest(timelist, t_read2[0], 'id'), ua.findNearest(timelist, t_read2[1], 'id'))
+
+        read1 = npz.array[:,slice_read1]
+        read2 = npz.array[:,slice_read2]
+        
+        p_blockade, nb_singlet, nb_count = blockade_probability(npz, read1, read2)
+        res.append([npz.rget(x_lbl), p_blockade, nb_singlet, nb_count])
+
+    res = np.array(res)
+    if save:
+        uf.saveToNpz('', meas_file, res, metadata=uf.loadNpz(meas_file).metadata, make_date_folder=False, prepend_date=False)
+
+def plot(ax, meas_npz, color=0):
+    array = meas_npz.array
+    md = uu.customDict(meas_npz.metadata)
+    lbl = f"chirp {md.chirp*1e-6}Mhz, power {md.ampl}dBm"
+    ax.plot(array[::,0]*1e-9, array[::,1], label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
+
+
+# %% analyses
+do_analysis('freqs0', save=True)
+do_analysis('freqs1', save=True)
+
+
+# %% loads
+nuit3 = uf.loadNpz(LOG_PATH+"results/nuit3.npz")
+freqs0 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs0')[0])
+freqs1 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs1')[0])
+
+
+
+# %% plot
+fig, ax = plt.subplots(figsize=(10,4))
+
+to_plot = [nuit3, 
+           freqs0, 
+           #freqs1,
+           ]
+[plot(ax, line, i) for i, line in enumerate(to_plot)]
+
+up.modFig1d(fig, ax)
+ax.set_xlabel('frequence (GHz)')
+ax.set_ylabel('$P_{flip}$')
+ax.grid()
+fig.show()
+
