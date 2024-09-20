@@ -25,7 +25,7 @@ from matplotlib import pyplot as plt
 import matplotlib
 
 # %% functions
-def blockade_probability(npz, read1, read2):
+def blockade_probability(read1, read2):
     """ take read1 and read2 maps.
     exclude from read2 all the traces that are singlet in read1
     count the number of spin blockade in read2
@@ -68,38 +68,46 @@ def do_analysis(measure_name, x_lbl='freq',
         read1 = npz.array[:,slice_read1]
         read2 = npz.array[:,slice_read2]
         
-        p_blockade, nb_singlet, nb_count = blockade_probability(npz, read1, read2)
+        p_blockade, nb_singlet, nb_count = blockade_probability(read1, read2)
         res.append([npz.rget(x_lbl), p_blockade, nb_singlet, nb_count])
 
     res = np.array(res)
     if save:
         uf.saveToNpz('', meas_file, res, metadata=uf.loadNpz(meas_file).metadata, make_date_folder=False, prepend_date=False)
 
+    
 def plot(ax, meas_npz, color=0):
     array = meas_npz.array
     md = uu.customDict(meas_npz.metadata)
     lbl = f"chirp {md.chirp*1e-6}Mhz, power {md.ampl}dBm"
+    tdrive = md.get('tdrive', 0.0008)
+    if tdrive: lbl += f", drive {tdrive*1e3}ms"
     ax.plot(array[::,0]*1e-9, array[::,1], label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
 
 
 # %% analyses
 do_analysis('freqs0', save=True)
 do_analysis('freqs1', save=True)
+do_analysis('freqs2', save=True)
+do_analysis('nuit', save=True)
 
 
 # %% loads
 nuit3 = uf.loadNpz(LOG_PATH+"results/nuit3.npz")
 freqs0 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs0')[0])
 freqs1 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs1')[0])
-
+freqs2 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs2')[0])
+nuit = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'nuit')[0])
 
 
 # %% plot
-fig, ax = plt.subplots(figsize=(10,4))
+fig, ax = plt.subplots(figsize=(8,4))
 
 to_plot = [nuit3, 
            freqs0, 
-           #freqs1,
+           freqs1, 
+           freqs2,
+           nuit
            ]
 [plot(ax, line, i) for i, line in enumerate(to_plot)]
 
