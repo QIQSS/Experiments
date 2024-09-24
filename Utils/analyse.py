@@ -255,6 +255,8 @@ def findClassifyingThreshold(double_gaussian_parameters,
                              method: Literal['min', 'mid'] = 'min'):
     """ estimate the treshold for classifying a double gaussian.
     use the results from fitDoubleGaussian """
+    if double_gaussian_parameters is None: return False
+    
     sigma1, sigma2, mu1, mu2, A1, A2 = double_gaussian_parameters
     match method:
         case 'mid':
@@ -289,10 +291,13 @@ def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.0
     bins, hist = histogram(array, return_type='all')
     peaks, prop = findPeaks(hist, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
 
-    if len(peaks) == 3:
-        print("3 peaks found, trying with a sigma = 2*sigma")
+    if len(peaks) < 1:
+        return False
+    if len(peaks) > 2 and len(peaks) < 10:
+        print("More than 2 peaks found, trying with a sigma = 2*sigma")
+        print(filter_sigma)
         return autoClassify(array, filter_sigma*2, width_tolerance, prominence_factor, verbose)
-    if len(peaks) != 2:
+    elif len(peaks)>=10:
         print(f"{uu.fname()}: nb peaks != 2, can't classify")
         
         return False
@@ -305,6 +310,58 @@ def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.0
 
     return clas_clean
 
+def blockade_probability(read1, read2):
+    """ take read1 and read2 maps.
+    exclude from read2 all the traces that are singlet in read1
+    count the number of singlet / triplet in read2
+    returns the blockade probability
+    """
+    read1clas = autoClassify(read1, width_tolerance=10, prominence_factor=0.04, verbose=0)
+    read2clas = autoClassify(read2, width_tolerance=10, prominence_factor=0.04, verbose=0)
+    
+
+    ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
+    
+    old_triplet_read2 = multiget(read2clas, ids_triplet_read1)
+    
+    ids_triplet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 0)]
+    ids_singlet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 1)]
+    
+    nb_triplet = len(ids_triplet_read2)
+    nb_singlet = len(ids_singlet_read2)
+    
+    p_blockade = nb_singlet / (nb_triplet + nb_singlet)
+
+    return p_blockade, nb_singlet, nb_triplet
+
+def flip_probability(read1, read2):
+    """ take read1 and read2 maps.
+    class from read1 all singlets and all triplets
+    count the number of flips
+    returns the flip probability
+    """
+    read1clas = autoClassify(read1, width_tolerance=20, prominence_factor=0.04, verbose=0)
+    read2clas = autoClassify(read2, width_tolerance=20, prominence_factor=0.04, verbose=0)
+    
+
+    ids_T_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
+    ids_S_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 1)]
+    
+    ids_T_read2 = [id_ for id_, trace in enumerate(read2clas) if np.all(trace == 0)]
+    ids_S_read2 = [id_ for id_, trace in enumerate(read2clas) if np.all(trace == 1)]
+    
+    ids_T_to_S = [id_ for id_ in ids_S_read2 if id_ in ids_T_read1]
+    ids_S_to_T = [id_ for id_ in ids_T_read2 if id_ in ids_S_read1]
+    
+    ids_T_to_T = [id_ for id_ in ids_T_read2 if id_ in ids_T_read1]
+    ids_S_to_S = [id_ for id_ in ids_S_read2 if id_ in ids_S_read1]
+    
+    nb_flip = len(ids_T_to_S) + len(ids_S_to_T)
+    nb_no_flip = len(ids_T_to_T) + len(ids_S_to_S)
+    
+    p_flip = nb_flip / (nb_flip + nb_no_flip)
+    
+    return p_flip, nb_flip, nb_no_flip
 
 def onCol(function, arr, col=0):
     arr = np.asarray(arr)
@@ -430,6 +487,14 @@ def fitExpDecayLinear(x, y, verbose=False, show_plot=False, text=''):
     return A, tau
     
 #### mesures
+
+def arange(start, stop, step=1, endpoint=True):
+    arr = np.arange(start, stop, step)
+
+    if endpoint and arr[-1]+step==stop:
+        arr = np.concatenate([arr,[stop]])
+
+    return arr
 
 def gen2dTraceSweep(x_start, x_stop, y_start, y_stop, nbpts):
     x_list = np.linspace(x_start, x_stop, nbpts)

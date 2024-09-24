@@ -72,16 +72,14 @@ _30 = (-0.006, -0.007)
 #_40 = (+0.010, 0)
 
 
-t31, t31d, t30, tread = 0.01, 0.015, 0.01, 0.02
-t31, t31d, t30, tread = 0.01, 0.005, 0.01, 0.02
+t31, t31d, t30, tread = 0.005, 0.005, 0.01, 0.01
 tdrive = 0.000_4
-#t31, t31d, t30, tread = 0.01, 0.000_2, 0.01, 0.02
 
 tbefore = 0.02
 
 # vm
 #read_level = {'P1': 1.086, 'P2': 0.598}
-read_level = {'P1': 1.0861, 'P2': 0.594}
+read_level = {'P1': 1.082, 'P2': 0.595}
 filt = 2 # gaussian filter
 ##############
 
@@ -127,14 +125,14 @@ rhP2.ramp.set(read_level['P2'])
 # vm
 def vmget():
     data = acquire(acq_time)
-    data = ua.gaussian(data, 2) if filt else data
+    data = ua.gaussian(data, filt) if filt else data
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
                       xlabel="time", 
                       axes_dict={'x': acq_time})
 
-    
+ 
 # %% psg setup
 
 # psg setup
@@ -154,27 +152,28 @@ psg.write(f'FM1:DEViation {freq_deviation}')
 #freqs = [20.146,20.386,20.482,20.834,21.362,21.507,21.714,21.843,22.098,22.162,22.260,22.386,22.466,22.546,22.755,22.882,23.022,23.154,23.362,23.666,23.980]
 #freqs = np.array(freqs)*1e9
 #freqs = np.arange(15.77e9, 17.77e9, 16e6); print(len(freqs))
-freqs = np.arange(16.27e9, 17.27e9, 16e6); print(len(freqs))
-
+#freqs = np.arange(16.17e9, 17.37e9, 1e6); print(len(freqs))
+freqs = ua.arange(16.515e9, 16.5275e9, 1e6, True); print(len(freqs))
 #powers = [-15, -10, -5]
 #points = [(p, f) for p in powers for f in freqs]
 
 points = freqs
 
-name = 'b600m_groschirp'
-nb_traces = 500
-chirp = 32e6
-ampl = -5
-description = """de 0.8T à 0.6T"""
+name = 'b591m_-20_3'
+nb_traces = 400
+chirp = 0.5e6
+ampl = -20
+description = """"""
 
 
 #####
 meas = um.Measure(LOG_PATH, name, metadata=
                   dict(nb_traces=nb_traces, 
                        chirp=chirp, ampl=ampl, description=description, tdrive=tdrive,
-                       champs=0.6))
+                       champs=0.591))
 
 
+psg.rf_en.set(True)
 psg.mod_fm_en.set(True)
 psg.ampl.set(ampl)
 psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
@@ -189,5 +188,5 @@ for i, f in tqdm(enumerate(points), total=(len(points))):
                           play=True, pause_after_one=True, take_focus=True, show=True)
     wait(.1)
     traces = np.array(vm.data_buffer[0].T)
-    meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=f))
+    meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=psg.freq_cw.get()))
     vm.close()

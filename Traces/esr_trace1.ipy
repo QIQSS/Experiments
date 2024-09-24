@@ -25,95 +25,109 @@ from matplotlib import pyplot as plt
 import matplotlib
 
 # %% functions
-def blockade_probability(read1, read2):
-    """ take read1 and read2 maps.
-    exclude from read2 all the traces that are singlet in read1
-    count the number of spin blockade in read2
-    returns the blockade probability
-    """
-    read1clas = ua.autoClassify(read1, width_tolerance=10, prominence_factor=0.04)
-    read2clas = ua.autoClassify(read2, width_tolerance=10, prominence_factor=0.04)
-
-    ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
-    
-    old_triplet_read2 = ua.multiget(read2clas, ids_triplet_read1)
-    ids_triplet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 0)]
-    
-    nb_singlet = len(old_triplet_read2) - len(ids_triplet_read2) 
-    
-    p_blockade = nb_singlet / len(old_triplet_read2)
-    
-    return p_blockade, nb_singlet, len(ids_triplet_read1)
 
 def do_analysis(measure_name, x_lbl='freq', 
                 t_acq=0.065, t_read1=[0.02, 0.04], t_read2=[0.045, 0.064],
-                save=False):
-    """ find the files then run blockade_probability() for each.
+                skip=[], force=False, save=False):
+    """ 
+    find the files then run blockade_probability() for each.
     if save: save the result to the meas file
+    if force: try to get the result from the meas file first. if it's good, return this.
     """
     
     meas_file, point_files = um.Measure.getFiles(LOG_PATH, measure_name)
+    
+    meas_npz = uf.loadNpz(meas_file, autosave_on_edit=save)
+    meas_npz.metadata['files'] = point_files
+    
+    if not force and len(meas_npz.array) == len(point_files):
+        return meas_npz
 
     res = []
 
     for i, file in tqdm(enumerate(point_files), total=len(point_files)):
         if i < 0: continue
-        npz = uf.loadNpz(file)
+        if i in skip: continue
+    
+        npz = uf.loadNpz(file, autosave_on_edit=False)
 
         if i == 0:
-            timelist = np.linspace(0, 0.065, len(npz.array[0]))
+            timelist = np.linspace(0, t_acq, len(npz.array[0]))
             slice_read1 = slice(ua.findNearest(timelist, t_read1[0], 'id'), ua.findNearest(timelist, t_read1[1], 'id'))
             slice_read2 = slice(ua.findNearest(timelist, t_read2[0], 'id'), ua.findNearest(timelist, t_read2[1], 'id'))
 
         read1 = npz.array[:,slice_read1]
         read2 = npz.array[:,slice_read2]
         
-        p_blockade, nb_singlet, nb_count = blockade_probability(read1, read2)
-        res.append([npz.rget(x_lbl), p_blockade, nb_singlet, nb_count])
+        #p_blockade, nb_singlet, nb_triplet = ua.blockade_probability(read1, read2)
+        p_blockade, nb_singlet, nb_triplet = ua.flip_probability(read1, read2)
+        res.append([npz.rget(x_lbl), p_blockade, nb_singlet, nb_triplet])
 
     res = np.array(res)
-    if save:
-        uf.saveToNpz('', meas_file, res, metadata=uf.loadNpz(meas_file).metadata, make_date_folder=False, prepend_date=False)
-
+    
+    meas_npz.array = res
+        
+    return meas_npz
     
 def plot(ax, meas_npz, color=0):
     array = meas_npz.array
+    sorted_indices = np.argsort(array[:, 0])
+    sorted_array = array[sorted_indices]
+
     md = uu.customDict(meas_npz.metadata)
     lbl = f"chirp {md.chirp*1e-6}Mhz, power {md.ampl}dBm"
-    tdrive = md.get('tdrive', 0.0008)
-    if tdrive: lbl += f", drive {tdrive*1e3}ms"
-    ax.plot(array[::,0]*1e-9, array[::,1], label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
+    lbl += f", drive {md.tdrive*1e3}ms"
+    ax.plot(sorted_array[::,0]*1e-9, sorted_array[::,1]*100, label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
 
 
 # %% analyses
-do_analysis('freqs0', save=True)
-do_analysis('freqs1', save=True)
-do_analysis('freqs2', save=True)
-do_analysis('nuit', save=True)
+freqs0 = do_analysis('freqs0', force=False, save=True)
+freqs1 = do_analysis('freqs1', force=False, save=True)
+freqs2 = do_analysis('freqs2', force=False, save=True)
+nuit = do_analysis('nuit', force=False, save=True)
+b600m0 = do_analysis('b600m_groschirp', force=True, save=True)
+b600m1 = do_analysis('b600m_1', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044] )
+b600m_long = do_analysis('b600m_long', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044], skip=[667] )
+b600m_p1 = do_analysis('b600m_power1', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044])
+b600m_p2 = do_analysis('b600m_power2', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044])
+b600m_z1 = do_analysis('b600m_zoom1', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044])
+b600m_z2 = do_analysis('b600m_zoom2', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b600m_n1 = do_analysis('b600m_nuit1', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b600m_n12 = do_analysis('b600m_nuit1_suite', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b591m_0 = do_analysis('b591m_-5', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b591m_1 = do_analysis('b591m_-20', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b591m_2 = do_analysis('b591m_-20_1', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b591m_3 = do_analysis('b591m_-20_2', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
+b591m_4 = do_analysis('b591m_-20_3', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
 
-
-# %% loads
+# %% loads (measure from before)
 nuit3 = uf.loadNpz(LOG_PATH+"results/nuit3.npz")
-freqs0 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs0')[0])
-freqs1 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs1')[0])
-freqs2 = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'freqs2')[0])
-nuit = uf.loadNpz(um.Measure.getFiles(LOG_PATH, 'nuit')[0])
-
 
 # %% plot
-fig, ax = plt.subplots(figsize=(8,4))
+fig, ax = plt.subplots(figsize=(16,4))
 
-to_plot = [nuit3, 
-           freqs0, 
-           freqs1, 
-           freqs2,
-           nuit
+to_plot = [
+            # nuit3, 
+            # freqs0, 
+            # freqs1, 
+            # freqs2,
+            # nuit,
+            b600m0,
+            b600m1,
+            b600m_long,
+            b600m_p1,
+            b600m_p2,
+            b600m_z1,
+            b600m_z2,
+            b600m_n1,
+            b600m_n12,
+            b591m_0, b591m_1, b591m_2, b591m_3, b591m_4,
            ]
 [plot(ax, line, i) for i, line in enumerate(to_plot)]
 
 up.modFig1d(fig, ax)
 ax.set_xlabel('frequence (GHz)')
-ax.set_ylabel('$P_{flip}$')
+ax.set_ylabel('$P_{flip} (\%)$')
 ax.grid()
 fig.show()
-
+#uu.mplqt(fig)

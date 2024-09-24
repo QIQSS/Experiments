@@ -47,16 +47,95 @@ def fileIn(paths: str|List[str],
 
 #### loading/saving from/to npz format
 
-def loadNpz(name, custom_dict=True):
-    """ Returns a dictionnary build from the npzfile.
-    if saveNpz was used, the return should be:
-        {'array': array(),
-         'metadata': {}}
+class NpzDict:
+    def __init__(self, npzfile, filename, autosave=True):
+        self._npzfile = npzfile
+        self._filename = filename
+        
+        self.autosave = autosave
+
+    def __getitem__(self, key):
+        return self._npzfile[key]
+
+    def __setitem__(self, key, value):
+        self._npzfile[key] = value
+        if self.autosave:
+            self.save()
+            
+    def set(self, key, value):
+        self._npzfile[key] = value
+        if self.autosave:
+            self.save()
+
+    def get(self, key, default=None):
+        return self._npzfile.get(key, default)
+
+    def __delitem__(self, key):
+        del self._npzfile[key]
+        if self.autosave:
+            self.save()
+
+    def save(self):
+        np.savez_compressed(self._filename, **self._npzfile)
+
+    def items(self):
+        return self._npzfile.items()
+
+    def keys(self):
+        return self._npzfile.keys()
+
+    def values(self):
+        return self._npzfile.values()
+
+    def __repr__(self):
+        return repr(self._npzfile)
+    
+                
+    def __getattr__(self, name):
+        if name in self._npzfile:
+            return self._npzfile[name]
+        raise AttributeError(f"'NpzDict' object has no attribute '{name}'")
+
+    def __setattr__(self, name, value):
+        if name in ['_npzfile', '_filename', 'autosave']:
+            super().__setattr__(name, value)
+        else:
+            self._npzfile[name] = value
+            if self.autosave:
+                self.save()
+
+    def rget(self, key, default=None):
+        """ recursive get:
+            search inside values that are dict.
+            return the first one find
+            or default
+        """    
+        def _searchKey(dic, key_to_find):
+            for key, val in dic.items():
+                if key == key_to_find:
+                    return val
+                if isinstance(val, (dict,)):
+                    return _searchKey(val, key_to_find)
+            return default
+        return _searchKey(self._npzfile, key)
+    
+    def pop(self, key, default=None):
+        """ Remove the specified key and return its value. 
+            If the key is not found, return default.
+        """
+        value = self._npzfile.pop(key, default)
+        if self.autosave:
+            self.save()
+        return value
+
+def loadNpz(name, autosave_on_edit=True):
+    """ Returns an editable dictionary built from the npz file.
     """
     if not name.endswith('.npz'):
         name += '.npz'
+    
     npzfile = np.load(name, allow_pickle=True)
-    ret =  {}
+    ret = {}
     for key in npzfile:
         obj = npzfile[key]
         try:
@@ -64,10 +143,8 @@ def loadNpz(name, custom_dict=True):
             ret[key] = python_obj
         except ValueError:
             ret[key] = obj
-   
-    if custom_dict:
-        return uu.customDict(ret)
-    return ret
+
+    return NpzDict(ret, name, autosave_on_edit)
 
 def _makeDateFolder(path):
     date = timemodule.strftime("%Y%m%d")
@@ -81,7 +158,7 @@ def saveToNpz(path, filename, array, metadata={},
     """ Save array to an npz file.
     metadata is a dictionnary, it can have pyHegel instruments as values: the iprint will be saved.
     """
-    if not path.endswith(('/', '\\')):
+    if path != '' and not path.endswith(('/', '\\')):
         path += '/'
     if make_date_folder: path = _makeDateFolder(path)
     timestamp = timemodule.strftime('%Y%m%d-%H%M%S-') if prepend_date else ''
