@@ -153,20 +153,22 @@ psg.write(f'FM1:DEViation {freq_deviation}')
 #freqs = np.array(freqs)*1e9
 #freqs = np.arange(15.77e9, 17.77e9, 16e6); print(len(freqs))
 #freqs = np.arange(16.17e9, 17.37e9, 1e6); print(len(freqs))
-freqs = ua.arange(16.515e9, 16.5275e9, 1e6, True); print(len(freqs))
+freqs = ua.arange(16.5127e9, 16.52750e9, 0.3e6, True); print(len(freqs))
+
 #powers = [-15, -10, -5]
 #points = [(p, f) for p in powers for f in freqs]
 
 points = freqs
 
-name = 'b591m_-20_3'
-nb_traces = 400
-chirp = 0.5e6
+name = 'b588m_c1'
+nb_traces = 600
+chirp = 0.0e6
 ampl = -20
 description = """"""
 
-
 #####
+
+
 meas = um.Measure(LOG_PATH, name, metadata=
                   dict(nb_traces=nb_traces, 
                        chirp=chirp, ampl=ampl, description=description, tdrive=tdrive,
@@ -174,7 +176,7 @@ meas = um.Measure(LOG_PATH, name, metadata=
 
 
 psg.rf_en.set(True)
-psg.mod_fm_en.set(True)
+psg.mod_fm_en.set(True if chirp !=0 else False)
 psg.ampl.set(ampl)
 psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
 

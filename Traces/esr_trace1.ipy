@@ -80,6 +80,10 @@ def plot(ax, meas_npz, color=0):
     ax.plot(sorted_array[::,0]*1e-9, sorted_array[::,1]*100, label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
 
 
+
+# %% loads (measure from before)
+nuit3 = uf.loadNpz(LOG_PATH+"results/nuit3.npz")
+
 # %% analyses
 freqs0 = do_analysis('freqs0', force=False, save=True)
 freqs1 = do_analysis('freqs1', force=False, save=True)
@@ -100,8 +104,8 @@ b591m_2 = do_analysis('b591m_-20_1', force=False, save=True, t_acq=0.040, t_read
 b591m_3 = do_analysis('b591m_-20_2', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
 b591m_4 = do_analysis('b591m_-20_3', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
 
-# %% loads (measure from before)
-nuit3 = uf.loadNpz(LOG_PATH+"results/nuit3.npz")
+# %% nuit
+b591m_nuit = do_analysis('b591m_nuit_1', force=False, save=True, t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
 
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
@@ -122,6 +126,7 @@ to_plot = [
             b600m_n1,
             b600m_n12,
             b591m_0, b591m_1, b591m_2, b591m_3, b591m_4,
+            b591m_nuit,
            ]
 [plot(ax, line, i) for i, line in enumerate(to_plot)]
 
