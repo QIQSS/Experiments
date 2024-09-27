@@ -94,6 +94,7 @@ def fft(arr):
 
 def gaussian(arr, sigma=20, **kwargs):
     """ returns a copied array with gaussian filter """
+    if sigma == 0: return arr
     return ndimage.gaussian_filter1d(arr, sigma, **kwargs)
  
 def gaussianlbl(image, sigma=20, **kwargs):
@@ -316,8 +317,8 @@ def blockade_probability(read1, read2):
     count the number of singlet / triplet in read2
     returns the blockade probability
     """
-    read1clas = autoClassify(read1, width_tolerance=10, prominence_factor=0.04, verbose=0)
-    read2clas = autoClassify(read2, width_tolerance=10, prominence_factor=0.04, verbose=0)
+    read1clas = autoClassify(read1, width_tolerance=20, prominence_factor=0.04, verbose=0)
+    read2clas = autoClassify(read2, width_tolerance=20, prominence_factor=0.04, verbose=0)
     
 
     ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
@@ -495,6 +496,22 @@ def arange(start, stop, step=1, endpoint=True):
         arr = np.concatenate([arr,[stop]])
 
     return arr
+
+def reorder_list(lst, n):
+    length = len(lst)
+    reordered = []
+    
+    # Add elements in the order [0, n, 2n, ...]
+    for i in range(0, length, n):
+        reordered.append(lst[i])
+    
+    # Add elements in the order [1, 1+n, 1+2n, ...]
+    for i in range(1, n):
+        for j in range(0, length, n):
+            index = i + j
+            if index < length:
+                reordered.append(lst[index])
+    return reordered
 
 def gen2dTraceSweep(x_start, x_stop, y_start, y_stop, nbpts):
     x_list = np.linspace(x_start, x_stop, nbpts)

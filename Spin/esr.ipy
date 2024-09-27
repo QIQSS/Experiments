@@ -3,7 +3,7 @@ LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUT
 LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
 
 %cd $LAB_SCRIPT_PATH
-LOG_PATH = LAB_SCRIPT_PATH + "/Spin/logs"
+LOG_PATH = r'D:/QBB16_SD11b_3/Spin/'
 
 from pyHegel import instruments
 from pyHegel.commands import wait
@@ -19,7 +19,7 @@ from Utils import utils as uu
 from Utils import measure as um
 
 from Utils.plot import imshow
-from Pulses.Builder import Pulse, genPWLFile
+from Pulses.Builder import Pulse, genPWLFile, equalizeTime
 
 from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 
@@ -29,7 +29,7 @@ awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
 awg_sr = 20e4
 channel = {'P1':1, 'P2':2}
-send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, pad='last')
 awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
 awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
 awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
@@ -42,7 +42,7 @@ ats = instruments.ATSBoard(systemId=1, cardId=1)
 ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
 ats.active_channels.set(['A','B'])
 #ats.sample_rate.set(1_000_000)
-ats.sample_rate.set(10_000)
+ats.sample_rate.set(20_000)
 ats.trigger_level_1.set(1000)
 ats.ConfigureBoard()
 ats.nbwindows.set(1)
@@ -63,6 +63,16 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 
 psg = instruments.agilent_rf_PSG('GPIB1::19::INSTR')
 
+awg2 = instruments.agilent_rf_33522A('USB0::2391::8967::MY50000526::0::INSTR')
+awg2.current_ch.set(1)
+awg2.mode.set('PULSe')
+awg2.ampl.set(1)
+awg2.offset.set(0.5)
+awg2.write('SOURce1:BURSt:MODE TRIGgered')
+awg2.write('SOURce1:BURSt:NCYCles 1')
+awg2.freq.set(1e3)
+awg2.out_en.set(True)     
+
 # %% 31 - 30 - 31 - read - 31:pulse - read
 ##### settings
 #   (P1  ,  P2)
@@ -72,14 +82,14 @@ _30 = (-0.006, -0.007)
 #_40 = (+0.010, 0)
 
 
-t31, t31d, t30, tread = 0.005, 0.005, 0.01, 0.01
+t31, t31d, t30, tread = 0.005, 0.01, 0.01, 0.01
 tdrive = 0.000_4
 
 tbefore = 0.02
 
 # vm
 #read_level = {'P1': 1.086, 'P2': 0.598}
-read_level = {'P1': 1.082, 'P2': 0.595}
+read_level = {'P1': 1.0895, 'P2': 0.600}
 filt = 2 # gaussian filter
 ##############
 
@@ -94,11 +104,13 @@ pulseP1.addCompensationZeroMean(value=-0.01)
 
 pulseP2 = Pulse(name='P2', shape_comp=True)
 pulseP2.add(tbefore)
-pulseP2.add(t30, offset=_30[1], mark=True)
-pulseP2.add(t31, offset=_31[1], mark=True)
-pulseP2.add(tread, offset=_read[1], mark=True)
-pulseP2.add(t31d, offset=_31[1], mark=True)
-pulseP2.add(tread, offset=_read[1], mark=True)
+pulseP2.add(t30, offset=_30[1], mark=False)
+pulseP2.add(t31, offset=_31[1], mark=False)
+pulseP2.add(tread, offset=_read[1], mark=False)
+pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
+pulseP2.add(tdrive, offset=_31[1], mark=True)
+pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
+pulseP2.add(tread, offset=_read[1], mark=False)
 pulseP2.addCompensationZeroMean(value=+0.004)
 
 pulseSR = Pulse(name='ESR', shape_comp=False)
@@ -109,7 +121,11 @@ pulseSR.addRamp(tdrive, -.75/awg.gain, +.75/awg.gain, mark=True)
 pulseSR.add(t31d/2 - tdrive/2)
 pulseSR.add(tread)
 
-pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
+
+equalizeTime(pulseP1, pulseP2)
+equalizeTime(pulseP2, pulseSR)
+
+#pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
 genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
 
 acq_time = pulseP1.getMarkDuration(awg_sr)
@@ -132,7 +148,61 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
                       xlabel="time", 
                       axes_dict={'x': acq_time})
 
- 
+
+# %% pulse multi sequence
+nb_pulse = 600
+awg.write('SOURce1:RMODe continuous')
+awg.write('SOURce2:RMODe continuous')
+tbefore = 0.01
+ats.sample_rate.set(20_000)
+####
+
+pulseP1 = Pulse(name='P1', shape_comp=True)
+pulseP1.add(tbefore)
+pulseP1.add(t30, offset=_30[0], mark=True)
+pulseP1.add(t31, offset=_31[0], mark=True)
+pulseP1.add(tread, offset=_read[0], mark=True)
+pulseP1.add(t31d, offset=_31[0], mark=True)
+pulseP1.add(tread, offset=_read[0], mark=True)
+pulseP1.addCompensationZeroMean(value=-0.01)
+
+pulseP2 = Pulse(name='P2', shape_comp=True)
+pulseP2.add(tbefore)
+pulseP2.add(t30, offset=_30[1])
+pulseP2.add(t31, offset=_31[1])
+pulseP2.add(tread, offset=_read[1])
+pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
+pulseP2.add(tdrive, offset=_31[1], mark=True)
+pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
+pulseP2.add(tread, offset=_read[1])
+pulseP2.addCompensationZeroMean(value=+0.004)
+    
+equalizeTime(pulseP1, pulseP2, 0.001)
+pulseP1.plot(pulseP2, sample_rate=awg_sr)
+
+send(pulseP1, 1)
+send(pulseP2, 2)
+
+acq_time = t30+t31+tread+t31d+tread
+ats.acquisition_length_sec.set(acq_time)
+ats.nbwindows.set(nb_pulse)
+
+def get(nb=1):
+    acq = None
+    awg.run(True)
+    
+    for _ in range(nb):
+        data = ats.fetch_all.get()
+        data = data[2].reshape((nb_pulse,-1))
+        if acq is None:
+            acq = data
+        else: 
+            acq = np.concatenate((acq, data))
+    
+    awg.run(False)
+    return acq
+
+
 # %% psg setup
 
 # psg setup
@@ -153,14 +223,14 @@ psg.write(f'FM1:DEViation {freq_deviation}')
 #freqs = np.array(freqs)*1e9
 #freqs = np.arange(15.77e9, 17.77e9, 16e6); print(len(freqs))
 #freqs = np.arange(16.17e9, 17.37e9, 1e6); print(len(freqs))
-freqs = ua.arange(16.5127e9, 16.52750e9, 0.3e6, True); print(len(freqs))
-
+#freqs = ua.arange(16.5127e9, 16.52750e9, 0.3e6, True); print(len(freqs))
+freqs = np.linspace(16.4908e9, 16.4926e9, 15)[7:]; print(len(freqs))
 #powers = [-15, -10, -5]
 #points = [(p, f) for p in powers for f in freqs]
 
 points = freqs
 
-name = 'b588m_c1'
+name = 'b590m_c4'
 nb_traces = 600
 chirp = 0.0e6
 ampl = -20
@@ -192,3 +262,50 @@ for i, f in tqdm(enumerate(points), total=(len(points))):
     traces = np.array(vm.data_buffer[0].T)
     meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=psg.freq_cw.get()))
     vm.close()
+    
+    
+# %% avec 2 awg
+
+# 48 000 traces par heure
+
+#timelist = np.linspace(0.1e-6, 20.0e-6, 200)
+#freqs = np.linspace(16.485e9, 16.5e9, 201); print(len(freqs))
+freqs = np.linspace(16.465e9, 16.515e9, 20); print(len(freqs))
+
+points = freqs
+
+
+name = 'b10m_c2'
+nb_get = 1 # *600
+ampl = -12
+champs = 0.590
+tdrive = 100e-6
+chirp = 1e6
+description = """"""
+
+
+########
+meas = um.Measure(LOG_PATH, name, metadata=
+                  dict(nb_traces=600*nb_get, tdrive=tdrive, chirp=chirp,
+                       ampl=ampl, description=description,
+                       champs=champs, acq_len=ats.acquisition_length_sec.get()))
+
+
+psg.rf_en.set(True)
+psg.mod_fm_en.set(False)
+psg.ampl.set(ampl)
+psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=0))
+awg2.pulse_width.set(tdrive)
+ 
+for i, f in tqdm(enumerate(points), total=(len(points))):
+    
+    #awg2.pulse_width.set(tdrive)
+        
+    psg.freq_cw.set(f)
+
+    acq = get(nb_get)
+    
+    meas.saveArray(acq, metadata=dict(x_axis=acq_time, freq=f))
+    vm.close()
+    
+    

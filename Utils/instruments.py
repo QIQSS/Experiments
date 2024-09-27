@@ -5,22 +5,22 @@ from matplotlib import pyplot as plt
 #awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4, 
                  wv_name='waveform', plot=False, run_after=True, close_channel=None,
-                 round_nbpts_to_mod64=None):
+                 pad=None, mod=64):
     """ Stop the awg then send the sequence (object from Pulse code) to the awg.
     gain can be None and will be set to awg.gain if it exists or this value if not: 1/(0.02512)*0.4
     If run_after: it play the wave after sending it.
     If close_channel = 1 (2), close the channel 1 (2) before sending the wave.
-    nbpts_mod64: 'last' | 'zeros' | num, pad wave to be a multiple of 64.
+    pad: 'last' | 'zeros' | num, pad wave to be a multiple of `mod`.
     """
     wv_name += '_' + str(channel)
     wave = sequence.getWaveNormalized(awg_sr)
     wave_max_val = max(abs(sequence.getWave(awg_sr)))
     marks = sequence.getMarks(awg_sr, val_low=1, val_high=-1)
     
-    if round_nbpts_to_mod64:
-        padding_val = {'zeros':0, 'last':wave[-1]}.get(round_nbpts_to_mod64, round_nbpts_to_mod64)
+    if pad:
+        padding_val = {'zeros':0, 'last':wave[-1]}.get(pad, pad)
         
-        nb_padding_points = 64 - (len(wave) % 64)
+        nb_padding_points = mod - (len(wave) % mod)
         wave = np.concatenate((wave, np.ones(nb_padding_points)*padding_val))
         marks = np.concatenate((marks, np.ones(nb_padding_points)*marks[-1]))
     
@@ -30,6 +30,7 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         gain = 1/(0.02512)*0.4
     
     awg.run(False)
+    print("len wave:", len(wave))
     if len(wave) < 2048:
         print(f"Probably not enough points: {len(wave)}")
     awg.waveform_create(wave, wv_name, sample_rate=awg_sr, amplitude=2*wave_max_val*gain, force=True)

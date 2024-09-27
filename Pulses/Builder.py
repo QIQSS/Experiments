@@ -278,6 +278,16 @@ class Pulse(object):
     def genPWLFile(self, sample_rate, filename):
         genPWLFile(self, sample_rate, filename)
 
+def equalizeTime(pulse1, pulse2):
+    len1, len2 = pulse1.duration, pulse2.duration
+    diff = abs(len1-len2)
+    if diff == 0: return
+    if len1 < len2:
+        pulse1.add(diff)
+    elif len2 < len1:
+        pulse2.add(diff)
+    return
+    
 def compensateAndEqualizeTime(pulse1, pulse2, value):
     """ Add a dc compensation segment to each pulse and equalize their time with a 0 offset segment.
     """
