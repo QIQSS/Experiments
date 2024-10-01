@@ -12,6 +12,7 @@ import time
 import traceback
 import numpy as np
 
+from Utils import files as uf
 
 class VideoModeWindow(QMainWindow):
     
@@ -67,6 +68,9 @@ class VideoModeWindow(QMainWindow):
         self._wrap_mode = False
         self.pause_after_one = pause_after_one
                         
+        self.xlabel, self.ylabel = xlabel, ylabel
+        self.dim = dim
+        
         # sweep object
         if ysweep:
             wrap_at = len(ysweep)
@@ -339,6 +343,23 @@ class VideoModeWindow(QMainWindow):
         exp = pg.exporters.ImageExporter(self.graph.scene())
         exp.export(copy=True)
         clipboard.setImage(exp.png)
+        
+    def saveToNpz(self):
+        to_save = None
+        if self.dim == 1:
+            if self._wrap_mode:
+                to_save = self.image.image.T
+            else:
+                to_save = self.curve.getData[1]
+        else:
+            to_save = self.image.image.T
+        
+        meta = dict(x_axis=self.x, y_axis=self.y,
+                    x_label=self.xlabel, y_label=self.ylabel)
+        path = '.'
+        filename = 'vm'
+        uf.saveToNpz(path, filename, to_save, make_date_folder=False,
+                     metadata=meta)
 
 class VideoThread(QThread):
     sig_frameDone = pyqtSignal(np.ndarray)
