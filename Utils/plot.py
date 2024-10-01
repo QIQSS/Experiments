@@ -594,9 +594,8 @@ def legend_lines_toggle(fig, ax):
     fig.canvas.mpl_connect('pick_event', on_pick)
 
 def slider(fig, ax, function, range_, name='param'):
-    fig.subplots_adjust(right=1.25)
-    #ax_slide = fig.add_axes([0.25, 0.1, 0.65, 0.03])
-    ax_slide = fig.add_axes([0.1, 0.25, 0.03, 0.65])
+    fig.subplots_adjust(right=0.8)
+    ax_slide = fig.add_axes([0.85, 0.2, 0.03, 0.5])
    
     values = np.linspace(range_[0], range_[1], range_[2])
     
@@ -605,7 +604,8 @@ def slider(fig, ax, function, range_, name='param'):
     slider = Slider(
         ax_slide, name, range_[0], range_[1],
         valinit=range_[0], valstep=values,
-        color="green"
+        color=COLORS_D[1],
+        orientation="vertical"
     )
     fig.slider = slider # keep globally
     ax.original_lines = list(ax.lines)
