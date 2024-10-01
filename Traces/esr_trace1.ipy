@@ -1,4 +1,4 @@
-# %% imports
+_# %% imports
 # -*- coding: utf-8 -*-
 OS = 'w' # 'l' | 'w'
 LS_PATH, LOG_PATH = \
@@ -133,28 +133,84 @@ b590m_80m = do_analysis('b80m2', alg='blockade', force=False, save=True, t_acq=0
 # %%
 #b590m_80m_nuit = do_analysis('b80m_nuit', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044],skip=[1])
 b10m_ = do_analysis('b10m_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b10m_c2 = do_analysis('b10m_c2', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
 
+
+#%%
+#b10m_c5 = do_analysis('b10m_c5', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+pw2_m22 = do_analysis('pw2_m22_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+pw2_m18 = do_analysis('pw2_m18_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+pw2_m15 = do_analysis('pw2_m15_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+pw2_m13 = do_analysis('pw2_m13', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+pw2_m12 = do_analysis('pw2_m12_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+pw2_m10 = do_analysis('pw2_m10_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+
+#%%
+
+b08_p22 = do_analysis('b08_p22_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b08_p18 = do_analysis('b08_p18_', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b08_p15 = do_analysis('b08_p15', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b08_p12 = do_analysis('b08_p12', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+
+# %%
+#b005_c1 = do_analysis('b005_c1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_p18 = do_analysis('b005_p18', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_p14 = do_analysis('b005_p14', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_p12 = do_analysis('b005_p12', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_p10 = do_analysis('b005_p10', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_p8 = do_analysis('b005_p8', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+# %%
+b005_chirp1 = do_analysis('b005_chirp1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_chirp2 = do_analysis('b005_chirp2', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_chirp3 = do_analysis('b005_chirp3', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_large1= do_analysis('b005_large1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
 
-to_plot = [
-            # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
+to_plot = [ # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
             # b600m_z2,
             # b600m_n1,
             # b600m_n12,
             #b591m_0, 
-            b591m_1, b591m_2, b591m_3, b591m_4,
-            b591m_nuit,
-            b588m_c1,
-            b590m_c2,
-            b590m_c3,
-            b590m_c4,
-            b590m_c5,
+            #b591m_1, b591m_2, b591m_3, b591m_4,
+            #b591m_nuit,
+            #b588m_c1,
+            #b590m_c2,
+            #b590m_c3,
+            #b590m_c4,
+            #b590m_c5,
             #b590m_80m ,
-            b10m_
+            #b10m_,
+            #b10m_c2,
+            #b10m_c3,
+            #b10m_c4,
+            #b10m_c5,
+            #b10m_c6,
+            #pw_m22,
+            # pw2_m22,
+            # pw2_m18,
+            # pw2_m15,
+            # pw2_m13,
+            # pw2_m12,
+            # pw2_m10,
+            # b08_p22,
+            # b08_p18,
+            # b08_p15,
+            # b08_p12,
+            #b005_c1,
+            b005_p18,
+            b005_p14,
+            b005_p12,
+            b005_p10,
+            b005_p8,
+            b005_chirp1,
+            b005_chirp2,
+            b005_chirp3,
+            b005_large1,
+            
            ]
-[plot(ax, line, i, sigma=0) for i, line in enumerate(to_plot)]
+[plot(ax, line, i, sigma=1) for i, line in enumerate(to_plot)]
 
 up.modFig1d(fig, ax)
 ax.set_xlabel('frequence (GHz)')

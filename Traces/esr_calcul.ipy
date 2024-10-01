@@ -3,8 +3,8 @@
 from Utils import spin as us
 
 # %%
-f, f_min, f_max = us.f_res(g=1.9965, g_dev=0, B=0.591, B_dev=0.1)
+f, f_min, f_max = us.f_res(g=2, g_dev=4, B=0.590, B_dev=0.0)
 
 # %%
-g_eff1 = us.g_eff(16.515e9, B=0.591)
+g_eff1 = us.g_eff(16.52e9, B=0.591) # 1.9972
 g_eff2 = us.g_eff(16.525e9, B=0.591)

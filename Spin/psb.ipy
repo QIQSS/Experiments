@@ -4,6 +4,7 @@ LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
 
 %cd $LAB_SCRIPT_PATH
 LOG_PATH = r'D:/QBB16_SD11b_3/Spin/'
+LOG_PATH_HL = r'D:/QBB16_SD11b_3/Hlab/'
 
 from pyHegel import instruments
 from pyHegel.commands import wait
@@ -18,7 +19,7 @@ from Utils import instruments as ui
 from Utils import utils as uu
 
 from Utils.plot import imshow
-from Pulses.Builder import Pulse, genPWLFile
+from Pulses.Builder import Pulse, genPWLFile, equalizeTime
 
 from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 # %% setup
@@ -70,8 +71,9 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 1.096, 0.015, 0.010
-valueStep, deltaStep, nbStep = 0.598, 0.008, 101
+valueRamp, deltaRamp, timeRamp = 1.265, 0.015, 0.010
+valueStep, deltaStep, nbStep = 0.835, 0.010, 101
+
 
 sync_time_after_ramp = 0.01
 ramp_direction = 'up' # 'up' | 'down'
@@ -122,7 +124,7 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_directio
 # %%% save
 img = vm.data_buffer[0].T
 up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
-          title='B=800mT', filename='transition_B=800mT_retour', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH)
+          title='zone psb video mode', filename='transition_psb', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH_HL)
 
 # %% PSB pulse
 ##### settings

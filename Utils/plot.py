@@ -610,8 +610,7 @@ def modFig1d(fig, ax):
         if event.key == "c":
             fig.cursor.visible = not fig.cursor.visible
     fig.canvas.mpl_connect('key_press_event', onKeyPress)
-    
-    cursor_hover(fig, ax)
+
     legend_lines_toggle(fig, ax)
      
 

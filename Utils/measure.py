@@ -68,7 +68,7 @@ class Measure:
             if dir_name.endswith(name):
                 matches.append(os.path.join(path, dir_name))
         if len(matches) > 1:
-            raise Exception(f"More than one directory found for measure {name}: {matches}")
+            raise Exception(f"More than one directory found for measure {name}: {matches}. Use <date>-name to distiguish, or delete the wrong one.")
 
         elif len(matches) == 0:
             raise Exception(f"Measure {name}: No directory found")
@@ -78,6 +78,7 @@ class Measure:
         
         measure_file = [(i,f) for i,f in enumerate(files) if f"_{name}" in f]
         files.pop(measure_file[0][0])
+        
         return measure_file[0][1], files
 
         

@@ -4,6 +4,7 @@ LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
 
 %cd $LAB_SCRIPT_PATH
 LOG_PATH = r'D:/QBB16_SD11b_3/Spin/'
+LOG_PATH_HL = r'D:/QBB16_SD11b_3/Hlab/'
 
 from pyHegel import instruments
 from pyHegel.commands import wait
@@ -89,7 +90,8 @@ tbefore = 0.02
 
 # vm
 #read_level = {'P1': 1.086, 'P2': 0.598}
-read_level = {'P1': 1.0895, 'P2': 0.600}
+#read_level = {'P1': 1.0895, 'P2': 0.600}
+read_level = {'P1': 1.254, 'P2': 0.835}
 filt = 2 # gaussian filter
 ##############
 
@@ -148,12 +150,86 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
                       xlabel="time", 
                       axes_dict={'x': acq_time})
 
+# %% pulse 30 - 40 - 31 - read
+##### settings
+#   (P1  ,  P2)
+
+_before = (1.25, 0.821)
+_30 = (1.26, 0.823)
+_40 = (1.27, 0.834)
+_31 = (1.250, 0.835)
+_read = (1.26 , 0.834)
+
+t30, t40, t31, tread = 0.01, 0.02, 0.02, 0.01
+
+tbefore = 0.03
+
+###########
+def genDeltas(*points):
+    """ from (x1,y1), (x2,y2), ..., (xn, yn)
+    return 
+    (x_middle, y_middle), [(x1_delta, y1_delta), ...]
+    """
+    arr = np.asarray(points)
+    xm, ym = np.mean(arr[:, 0]), np.mean(arr[:, 1])
+    
+    new_points = [(x-xm, y-ym) for x,y in points]
+    
+    return (xm, ym), new_points
+
+p_middle, p_deltas = genDeltas(_30, _40, _31, _read, _before)
+imshow(LOG_PATH_HL+'20240930/20240930-161430-transition_psb.npz', scatter_points=[(0,x+p_middle[0],y+p_middle[1]) for x,y in p_deltas]+[(1,p_middle[0], p_middle[1])])
+
+_30, _40, _31, _read, _before = p_deltas
+
+LOG_PATH_HL = r'D:/QBB16_SD11b_3/Hlab/'
+read_level = {'P1': p_middle[0], 'P2': p_middle[1]}
+filt = 2 # gaussian filter
+
+pulseP1 = Pulse(name='P1', shape_comp=True)
+pulseP1.add(tbefore, _before[0])
+pulseP1.add(t30, offset=_30[0], mark=True)
+pulseP1.add(t40, offset=_40[0], mark=True)
+pulseP1.add(t31, offset=_31[0], mark=True)
+pulseP1.add(tread, offset=_read[0], mark=True)
+#pulseP1.addCompensationZeroMean(value=-0.01)
+
+pulseP2 = Pulse(name='P2', shape_comp=True)
+pulseP2.add(tbefore, _before[1])
+pulseP2.add(t30, offset=_30[1], mark=True)
+pulseP2.add(t40, offset=_40[1], mark=True)
+pulseP2.add(t31, offset=_31[0], mark=True)
+pulseP2.add(tread, offset=_read[1], mark=True)
+#pulseP2.addCompensationZeroMean(value=+0.004)
+
+#pulseP1.plot(pulseP2, wide='wider', relative_time=False, no_shape_comp=1)
+
+send(pulseP1, 1)
+send(pulseP2, 2, run_after=True)
+
+acq_time = pulseP1.getMarkDuration(awg_sr)
+ats.acquisition_length_sec.set(acq_time)
+
+
+rhP1.ramp.set(read_level['P1'])
+rhP2.ramp.set(read_level['P2'])
+
+# vm
+def vmget():
+    data = acquire(acq_time)
+    data = ua.gaussian(data, filt) if filt else data
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
+                      xlabel="time", 
+                      axes_dict={'x': acq_time})
 
 # %% pulse multi sequence
 nb_pulse = 600
 awg.write('SOURce1:RMODe continuous')
 awg.write('SOURce2:RMODe continuous')
-tbefore = 0.01
+awg.write('SOURce3:RMODe continuous')
+tbefore = 0.02
 ats.sample_rate.set(20_000)
 ####
 
@@ -177,7 +253,7 @@ pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
 pulseP2.add(tread, offset=_read[1])
 pulseP2.addCompensationZeroMean(value=+0.004)
     
-equalizeTime(pulseP1, pulseP2, 0.001)
+equalizeTime(pulseP1, pulseP2)
 pulseP1.plot(pulseP2, sample_rate=awg_sr)
 
 send(pulseP1, 1)
@@ -188,6 +264,7 @@ ats.acquisition_length_sec.set(acq_time)
 ats.nbwindows.set(nb_pulse)
 
 def get(nb=1):
+    nb_pulse=ats.nbwindows.get()
     acq = None
     awg.run(True)
     
@@ -203,98 +280,35 @@ def get(nb=1):
     return acq
 
 
-# %% psg setup
-
-# psg setup
-ampl = -28
-freq = 20e9
-freq_deviation = 32e6
-
-psg.ampl.set(ampl)
-psg.write(f'FM1:DEViation {freq_deviation}')
-
-#psg.freq_cw.set(freq)
-#psg.mod_fm_en.set(True)
-#psg.rf_en.set(True)
-
-
-# %% sweep meas
-#freqs = [20.146,20.386,20.482,20.834,21.362,21.507,21.714,21.843,22.098,22.162,22.260,22.386,22.466,22.546,22.755,22.882,23.022,23.154,23.362,23.666,23.980]
-#freqs = np.array(freqs)*1e9
-#freqs = np.arange(15.77e9, 17.77e9, 16e6); print(len(freqs))
-#freqs = np.arange(16.17e9, 17.37e9, 1e6); print(len(freqs))
-#freqs = ua.arange(16.5127e9, 16.52750e9, 0.3e6, True); print(len(freqs))
-freqs = np.linspace(16.4908e9, 16.4926e9, 15)[7:]; print(len(freqs))
-#powers = [-15, -10, -5]
-#points = [(p, f) for p in powers for f in freqs]
-
-points = freqs
-
-name = 'b590m_c4'
-nb_traces = 600
-chirp = 0.0e6
-ampl = -20
-description = """"""
-
-#####
-
-
-meas = um.Measure(LOG_PATH, name, metadata=
-                  dict(nb_traces=nb_traces, 
-                       chirp=chirp, ampl=ampl, description=description, tdrive=tdrive,
-                       champs=0.591))
-
-
-psg.rf_en.set(True)
-psg.mod_fm_en.set(True if chirp !=0 else False)
-psg.ampl.set(ampl)
-psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
-
-for i, f in tqdm(enumerate(points), total=(len(points))):
-    
-    psg.freq_cw.set(f)
-    
-    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=nb_traces,
-                          xlabel="time", 
-                          axes_dict={'x': acq_time},
-                          play=True, pause_after_one=True, take_focus=True, show=True)
-    wait(.1)
-    traces = np.array(vm.data_buffer[0].T)
-    meas.saveArray(traces, metadata=dict(x_axis=acq_time, freq=psg.freq_cw.get()))
-    vm.close()
-    
-    
-# %% avec 2 awg
-
+# %% sweep
 # 48 000 traces par heure
 
 #timelist = np.linspace(0.1e-6, 20.0e-6, 200)
-#freqs = np.linspace(16.485e9, 16.5e9, 201); print(len(freqs))
-freqs = np.linspace(16.465e9, 16.515e9, 20); print(len(freqs))
+freqs = ua.arange(16.4e9, 16.8e9, 6e6); print(len(freqs))
+#freqs = np.linspace(16.470e9, 16.51e9, 11); print(len(freqs))
 
 points = freqs
 
 
-name = 'b10m_c2'
+name = 'b005_narrow1'
 nb_get = 1 # *600
-ampl = -12
+ampl = -4
 champs = 0.590
-tdrive = 100e-6
-chirp = 1e6
+tdrive = 0.000_4
+chirp = 16e6
 description = """"""
+
 
 
 ########
 meas = um.Measure(LOG_PATH, name, metadata=
-                  dict(nb_traces=600*nb_get, tdrive=tdrive, chirp=chirp,
+                  dict(nb_traces=nb_get, tdrive=tdrive, chirp=chirp,
                        ampl=ampl, description=description,
                        champs=champs, acq_len=ats.acquisition_length_sec.get()))
-
-
 psg.rf_en.set(True)
-psg.mod_fm_en.set(False)
+psg.mod_fm_en.set(True) # !!! always True, even when no chirp: needed for trigger.
 psg.ampl.set(ampl)
-psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=0))
+psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
 awg2.pulse_width.set(tdrive)
  
 for i, f in tqdm(enumerate(points), total=(len(points))):
@@ -302,10 +316,58 @@ for i, f in tqdm(enumerate(points), total=(len(points))):
     #awg2.pulse_width.set(tdrive)
         
     psg.freq_cw.set(f)
-
     acq = get(nb_get)
     
     meas.saveArray(acq, metadata=dict(x_axis=acq_time, freq=f))
     vm.close()
+
+
     
+# %% boucle sweep
+
+# 48 000 traces par heure
+power = [-18,-14,-12,-10,-8]
+names = ['b005_p'+str(abs(p)) for p in power]
+
+for i in range(len(power)):
+#timelist = np.linspace(0.1e-6, 20.0e-6, 200)
+#freqs = np.linspace(16.485e9, 16.5e9, 201); print(len(freqs))
+    freqs = ua.arange(16.47e9, 16.51e9, .2e6); print(len(freqs))
+
+    points = freqs
+
+
+    name = names[i]
+    nb_get = 1 # *600
+    ampl = power[i]
+    champs = 0.590
+    tdrive = 100e-6
+    chirp = 0
+    description = """"""
+
+
+
+########
+    meas = um.Measure(LOG_PATH, name, metadata=
+                      dict(nb_traces=nb_get, tdrive=tdrive, chirp=chirp,
+                           ampl=ampl, description=description,
+                           champs=champs, acq_len=ats.acquisition_length_sec.get()))
+
+
+    psg.rf_en.set(True)
+    psg.mod_fm_en.set(True)
+    psg.ampl.set(ampl)
+    psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
+    awg2.pulse_width.set(tdrive)
+    
+    for i, f in tqdm(enumerate(points), total=(len(points))):
+    
+        #awg2.pulse_width.set(tdrive)
+        
+        psg.freq_cw.set(f)
+
+        acq = get(nb_get)
+    
+        meas.saveArray(acq, metadata=dict(x_axis=acq_time, freq=f))
+        vm.close()
     
