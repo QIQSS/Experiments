@@ -116,3 +116,15 @@ class mplqt(QMainWindow):
     def tight_layout(self):
         self.canvas.figure.tight_layout()
         self.canvas.draw()
+        
+from PyQt5.QtCore import QThread
+import time as timemodule
+class delayExec(QThread):
+    def __init__(self, time, fn):
+        super().__init__()
+        self.fn = fn
+        self.time = time
+
+    def run(self):
+        timemodule.sleep(self.time)
+        self.fn()

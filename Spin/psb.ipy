@@ -3,7 +3,7 @@ LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUT
 LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
 
 %cd $LAB_SCRIPT_PATH
-LOG_PATH = LAB_SCRIPT_PATH + "/Spin/logs"
+LOG_PATH = r'D:/QBB16_SD11b_3/Spin/'
 
 from pyHegel import instruments
 from pyHegel.commands import wait
@@ -25,15 +25,16 @@ from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 
 awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
-awg_sr = 10e3
+awg_sr = 20e4
 channel = {'P1':1, 'P2':2}
-send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, round_nbpts_to_mod64='last')
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, pad='last', mod=64)
 awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
 awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
 awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
 awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
 awg.write('SOURce2:DAC:RESolution 15')
 awg.write('SOURce3:DAC:RESolution 15')
+awg.output_en.set(True)
 # debug: awg.clear()
 
 ats = instruments.ATSBoard(systemId=1, cardId=1)
@@ -51,8 +52,8 @@ def acquire(acq_time):
     data = ats.fetch.get()[2]
     return data
 
-bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
-ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
+#bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
+#ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
 
 #zi = instruments.zurich_UHF("dev2949")
 #zi_get = lambda: commands.get((zi.readval, {'vals': ['r'], 'ch': 0}))[0]
@@ -89,7 +90,9 @@ pulseStep = pulseRamp.genMarksOnly(name='step')
 
 # send to awg
 send(pulseStep, channel[step_on])  # channel 1 (2) on P1 (P2)
+awg.output_en.set(True)
 send(pulseRamp, channel[ramp_on])
+awg.output_en.set(True)
 send(pulseRamp, ch=3, run_after=True)
 
 ats.acquisition_length_sec.set(timeRamp)

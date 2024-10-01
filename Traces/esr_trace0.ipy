@@ -42,6 +42,7 @@ def pl_loaded(npz, slice_read1, slice_read2, timelist):
     
     return p_flip, nb_singlet, len(ids_triplet_read1)
 
+
 def plotdrive(filename, lbl=None, x_label='frequence (GHz)', x_factor=1e-9):
     arr, meta = uf.loadNpz(LOG_PATH+f"results/{filename}.npz").values()
 
@@ -184,13 +185,17 @@ def pl(file, timelist=timelist, slice_read1=slice_read1, slice_read2=slice_read2
     ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
     
     old_triplet_read2 = ua.multiget(read2clas, ids_triplet_read1)
+
     ids_triplet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 0)]
+    ids_singlet_read2 = [id_ for id_, trace in enumerate(old_triplet_read2) if np.all(trace == 1)]
     
-    nb_singlet = len(old_triplet_read2) - len(ids_triplet_read2) 
+    nb_triplet = len(ids_triplet_read2)
+    nb_singlet = len(ids_singlet_read2)
     
-    p_flip = nb_singlet / len(old_triplet_read2)
+    p_blockade = nb_singlet / (nb_triplet + nb_singlet)
     
-    return npz.rget('freq'), p_flip, nb_singlet, len(ids_triplet_read1)
+    
+    return npz.rget('freq'), p_blockade, nb_singlet, len(ids_triplet_read1)
 
 resnuit2 = []
 for i, file in tqdm(enumerate(files), total=len(files)):
@@ -200,6 +205,7 @@ uf.saveToNpz(LOG_PATH+'results', 'resnuit2', resnuit2, make_date_folder=False, p
 
 # %%% plot
 resnuit2 = uf.loadNpz(LOG_PATH+'results/resnuit2.npz').array
+#resnuit2 = np.array(resnuit2)
 fig, ax = plt.subplots(figsize=(10,4))
 ax.plot(resnuit2[:,0]*1e-9, resnuit2[:,1], marker='o', linestyle='--')
 

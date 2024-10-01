@@ -139,7 +139,7 @@ def imshow(array, **kwargs):
     kw = full_kwargs
     
     # if array is not an array:
-    if isinstance(array, (dict, uu.customDict)): 
+    if isinstance(array, (dict, uu.customDict, uf.NpzDict)): 
         return imshowFromNpzDict(array, **called_kwargs)
     if type(array) == str:
         return imshowFromNpz(array, **called_kwargs)
