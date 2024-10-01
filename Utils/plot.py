@@ -593,11 +593,34 @@ def legend_lines_toggle(fig, ax):
 
     fig.canvas.mpl_connect('pick_event', on_pick)
 
-def cursor_hover(fig, ax, visible=False):
-    import mplcursors
-    fig.cursor = mplcursors.cursor(ax, hover=True, multiple=False)
-    fig.cursor.visible = visible
+def slider(fig, ax, function, range_, name='param'):
+    fig.subplots_adjust(right=1.25)
+    #ax_slide = fig.add_axes([0.25, 0.1, 0.65, 0.03])
+    ax_slide = fig.add_axes([0.1, 0.25, 0.03, 0.65])
+   
+    values = np.linspace(range_[0], range_[1], range_[2])
     
+    from matplotlib.widgets import Slider
+    
+    slider = Slider(
+        ax_slide, name, range_[0], range_[1],
+        valinit=range_[0], valstep=values,
+        color="green"
+    )
+    fig.slider = slider # keep globally
+    ax.original_lines = list(ax.lines)
+    
+    for l in ax.lines:
+        l.original_data = l.get_ydata()
+    
+    def update(val):
+        for l in ax.lines:
+            new_ydata = function(l.original_data, val)
+            l.set_ydata(new_ydata)
+        fig.canvas.draw_idle()
+
+    slider.on_changed(update)
+
 def modFig1d(fig, ax):
     """
     keybinds:   c toggle cursors

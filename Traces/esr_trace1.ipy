@@ -213,6 +213,7 @@ to_plot = [ # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b
 [plot(ax, line, i, sigma=1) for i, line in enumerate(to_plot)]
 
 up.modFig1d(fig, ax)
+up.slider(fig, ax, ua.gaussian, [0,10,11], 'sigma')
 ax.set_xlabel('frequence (GHz)')
 ax.set_ylabel('$P_{flip} (\%)$')
 ax.grid()
