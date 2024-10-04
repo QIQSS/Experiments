@@ -62,6 +62,19 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         print(f"Warning: volt amplitude with gain above 1.5V: {amp}V")
         return True
 
+def awgBTrigMode(awg):
+    awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
+    awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
+    awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
+    awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
+    awg.write('SOURce2:DAC:RESolution 15')
+    awg.write('SOURce3:DAC:RESolution 15')
+
+def awgContMode(awg):
+    awg.write('SOURce1:RMODe continuous')
+    awg.write('SOURce2:RMODe continuous')
+    awg.write('SOURce3:RMODe continuous')
+
 #ats = instruments.ATSBoard(systemId=1, cardId=1)
 #ats_conf = dict(sample_rate=10e5,
 #                input_range=4000) # vertical resolution in mV

@@ -77,61 +77,83 @@ awg2.out_en.set(True)
 # %% 31 - 30 - 31 - read - 31:pulse - read
 ##### settings
 #   (P1  ,  P2)
-_read = (+0.0105 , -0.00)
-_31 = (0.0, +0.002 ) #(-0.013, +0.000)
-_30 = (-0.006, -0.007)
+_read = (+0.014 , +0.00)
+#_31 = (-0.0035, +0.0015 )
+_31 = (-0.013, +0.004 )
+_30 = (-0.008, -0.0058)
 #_40 = (+0.010, 0)
 
 
-t31, t31d, t30, tread = 0.005, 0.01, 0.01, 0.01
-tdrive = 0.000_4
+t31, t31d, t30 = 0.010, 0.005, 0.015,
+tread1, tread2 = 0.015, 0.015
+tdrive = 0.000_8
 
 tbefore = 0.02
+adb_ramp_time = 0.005
 
 # vm
 #read_level = {'P1': 1.086, 'P2': 0.598}
 #read_level = {'P1': 1.0895, 'P2': 0.600}
-read_level = {'P1': 1.254, 'P2': 0.835}
+read_level = {'P1': 1.2450, 'P2': 0.8575}
 filt = 2 # gaussian filter
+
 ##############
 
 pulseP1 = Pulse(name='P1', shape_comp=True)
 pulseP1.add(tbefore)
 pulseP1.add(t30, offset=_30[0], mark=True)
 pulseP1.add(t31, offset=_31[0], mark=True)
-pulseP1.add(tread, offset=_read[0], mark=True)
-pulseP1.add(t31d, offset=_31[0], mark=True)
-pulseP1.add(tread, offset=_read[0], mark=True)
+
+pulseP1.addRamp(adb_ramp_time, _31[0], _read[0],mark=True)
+pulseP1.add(tread1, offset=_read[0], mark=True)
+pulseP1.addRamp(adb_ramp_time, _read[0], _31[0], mark=True)
+
+pulseP1.add(t31d/2, offset=_31[0], mark=True)
+
+pulseP1.addRamp(adb_ramp_time, _31[0], _read[0],mark=True)
+pulseP1.add(tread2, offset=_read[0], mark=True)
+
 pulseP1.addCompensationZeroMean(value=-0.01)
+
 
 pulseP2 = Pulse(name='P2', shape_comp=True)
 pulseP2.add(tbefore)
 pulseP2.add(t30, offset=_30[1], mark=False)
 pulseP2.add(t31, offset=_31[1], mark=False)
-pulseP2.add(tread, offset=_read[1], mark=False)
-pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
+
+pulseP2.addRamp(adb_ramp_time, _31[1], _read[1])
+pulseP2.add(tread1, offset=_read[1])
+pulseP2.addRamp(adb_ramp_time, _read[1], _31[1])
+
+pulseP2.add(t31d/2-tdrive/2, offset=_31[1])
 pulseP2.add(tdrive, offset=_31[1], mark=True)
-pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
-pulseP2.add(tread, offset=_read[1], mark=False)
-pulseP2.addCompensationZeroMean(value=+0.004)
+pulseP2.add(t31d/2-tdrive/2, offset=_31[1])
+pulseP2.addRamp(adb_ramp_time, _31[1], _read[1])
+
+pulseP2.add(tread2, offset=_read[1], mark=False)
+pulseP2.addCompensationZeroMean(value=+0.003)
 
 pulseSR = Pulse(name='ESR', shape_comp=False)
 pulseSR.add(tbefore)
-pulseSR.add(t30+t31+tread)
-pulseSR.add(t31d/2 - tdrive/2)
-pulseSR.addRamp(tdrive, -.75/awg.gain, +.75/awg.gain, mark=True)
-pulseSR.add(t31d/2 - tdrive/2)
-pulseSR.add(tread)
+pulseSR.add(t30+t31+tread1+2*adb_ramp_time)
+pulseSR.add(t31d/2-tdrive/2)
+pulseSR.addRamp(tdrive, -.75/gain, +.75/gain, mark=True)
+pulseSR.add(t31d/2-tdrive/2)
+pulseSR.add(tread2+2*adb_ramp_time)
 
 
 equalizeTime(pulseP1, pulseP2)
 equalizeTime(pulseP2, pulseSR)
 
 #pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
+points = [(0, x+read_level['P1'],y+read_level['P2']) for x,y in [_read, _31, _30]]
+points += [(1, read_level['P1'],read_level['P2'])]
+imshow('D:/QBB16_SD11b_3/Hlab/20241003/20241003-153705-transition_psb', scatter_points=points)
 genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
-
+#%%
 acq_time = pulseP1.getMarkDuration(awg_sr)
 ats.acquisition_length_sec.set(acq_time)
+ats.nbwindows.set(1)
 
 send(pulseP1, 1)
 send(pulseP2, 2)
@@ -226,42 +248,14 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
 
 # %% pulse multi sequence
 nb_pulse = 600
-awg.write('SOURce1:RMODe continuous')
-awg.write('SOURce2:RMODe continuous')
-awg.write('SOURce3:RMODe continuous')
+ui.awgContMode(awg)
 tbefore = 0.02
 ats.sample_rate.set(20_000)
+ats.nbwindows.set(nb_pulse)
+ats.ConfigureBoard()
 ####
 
-pulseP1 = Pulse(name='P1', shape_comp=True)
-pulseP1.add(tbefore)
-pulseP1.add(t30, offset=_30[0], mark=True)
-pulseP1.add(t31, offset=_31[0], mark=True)
-pulseP1.add(tread, offset=_read[0], mark=True)
-pulseP1.add(t31d, offset=_31[0], mark=True)
-pulseP1.add(tread, offset=_read[0], mark=True)
-pulseP1.addCompensationZeroMean(value=-0.01)
-
-pulseP2 = Pulse(name='P2', shape_comp=True)
-pulseP2.add(tbefore)
-pulseP2.add(t30, offset=_30[1])
-pulseP2.add(t31, offset=_31[1])
-pulseP2.add(tread, offset=_read[1])
-pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
-pulseP2.add(tdrive, offset=_31[1], mark=True)
-pulseP2.add(t31d/2 - tdrive/2, offset=_31[1])
-pulseP2.add(tread, offset=_read[1])
-pulseP2.addCompensationZeroMean(value=+0.004)
-    
-equalizeTime(pulseP1, pulseP2)
-pulseP1.plot(pulseP2, sample_rate=awg_sr)
-
-send(pulseP1, 1)
-send(pulseP2, 2)
-
-acq_time = t30+t31+tread+t31d+tread
 ats.acquisition_length_sec.set(acq_time)
-ats.nbwindows.set(nb_pulse)
 
 def get(nb=1):
     nb_pulse=ats.nbwindows.get()
@@ -284,18 +278,18 @@ def get(nb=1):
 # 48 000 traces par heure
 
 #timelist = np.linspace(0.1e-6, 20.0e-6, 200)
-freqs = ua.arange(16.4e9, 16.8e9, 6e6); print(len(freqs))
+freqs = ua.arange(17.37e9, 17.43e9, 0.4e6); print(len(freqs))
 #freqs = np.linspace(16.470e9, 16.51e9, 11); print(len(freqs))
 
 points = freqs
 
 
-name = 'b005_narrow1'
-nb_get = 1 # *600
-ampl = -4
+name = 'b2_45m_4'
+nb_get = 1
+ampl = -8
 champs = 0.590
-tdrive = 0.000_4
-chirp = 16e6
+tdrive = 0.000_8
+chirp = 0e6
 description = """"""
 
 
@@ -326,13 +320,13 @@ for i, f in tqdm(enumerate(points), total=(len(points))):
 # %% boucle sweep
 
 # 48 000 traces par heure
-power = [-18,-14,-12,-10,-8]
-names = ['b005_p'+str(abs(p)) for p in power]
+power = [-8,-7,-6,-9]
+names = ['b005_nuit_p'+str(abs(p)) for p in power]
 
 for i in range(len(power)):
 #timelist = np.linspace(0.1e-6, 20.0e-6, 200)
 #freqs = np.linspace(16.485e9, 16.5e9, 201); print(len(freqs))
-    freqs = ua.arange(16.47e9, 16.51e9, .2e6); print(len(freqs))
+    freqs = ua.arange(15.8e9, 17.1e9, 6e6); print(len(freqs))
 
     points = freqs
 
@@ -341,8 +335,8 @@ for i in range(len(power)):
     nb_get = 1 # *600
     ampl = power[i]
     champs = 0.590
-    tdrive = 100e-6
-    chirp = 0
+    tdrive = 0.000_4
+    chirp = 16e6
     description = """"""
 
 

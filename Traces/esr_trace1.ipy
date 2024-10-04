@@ -28,7 +28,7 @@ import matplotlib
 
 def do_analysis(measure_name, x_lbl='freq', 
                 t_acq=0.065, t_read1=[0.02, 0.04], t_read2=[0.045, 0.064],
-                skip=[], force=False, save=False, alg='flip'):
+                skip=[], force=False, save=False, alg='flip', tolerance=10):
     """ 
     find the files then run blockade_probability() for each.
     if save: save the result to the meas file
@@ -68,10 +68,13 @@ def do_analysis(measure_name, x_lbl='freq',
         read1 = npz.array[:,slice_read1]
         read2 = npz.array[:,slice_read2]
         
+        #clas_read1 = ua.autoClassify(read1, prominence_factor=0.04, verbose=0)
+        #clas_read1_ = np.apply_along_axis(ua.removeSmallEvents, arr=clas_read1, axis=1, tolerance=5)
+        
         if alg != 'flip':
-            p_blockade, nb_singlet, nb_triplet = ua.blockade_probability(read1, read2)
+            p_blockade, nb_singlet, nb_triplet = ua.blockade_probability(read1, read2, tolerance)
         else:
-            p_blockade, nb_singlet, nb_triplet = ua.flip_probability(read1, read2)
+            p_blockade, nb_singlet, nb_triplet = ua.flip_probability(read1, read2, tolerance)
         res.append([npz.rget(x_lbl), p_blockade, nb_singlet, nb_triplet])
 
     res = np.array(res)
@@ -154,20 +157,41 @@ b08_p12 = do_analysis('b08_p12', alg='flip', force=False, save=True, t_acq=0.044
 
 # %%
 #b005_c1 = do_analysis('b005_c1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
-b005_p18 = do_analysis('b005_p18', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
-b005_p14 = do_analysis('b005_p14', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
-b005_p12 = do_analysis('b005_p12', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
-b005_p10 = do_analysis('b005_p10', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
-b005_p8 = do_analysis('b005_p8', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+# b005_p18 = do_analysis('b005_p18', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+# b005_p14 = do_analysis('b005_p14', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+# b005_p12 = do_analysis('b005_p12', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+# b005_p10 = do_analysis('b005_p10', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+# b005_p8 = do_analysis('b005_p8', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
 # %%
 b005_chirp1 = do_analysis('b005_chirp1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
 b005_chirp2 = do_analysis('b005_chirp2', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
 b005_chirp3 = do_analysis('b005_chirp3', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
 b005_large1= do_analysis('b005_large1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_narrow1= do_analysis('b005_narrow1', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_narrow2= do_analysis('b005_narrow2', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+b005_narrow3= do_analysis('b005_narrow3', alg='flip', force=False, save=True, t_acq=0.0448, t_read1=[0.015, 0.025], t_read2=[0.035, 0.044])
+
+b005_large2= do_analysis('b005_large2', alg='blockade', force=1, save=True, t_acq=0.0448, t_read1=[0.015, 0.0249], t_read2=[0.0351, 0.044])
+b005_nuit_p8= do_analysis('b005_nuit_p8', alg='blockade', force=1, save=True, t_acq=0.0448, t_read1=[0.015, 0.0249], t_read2=[0.0351, 0.044], tolerance=5)
+b005_nuit_p7= do_analysis('b005_nuit_p7', alg='blockade', force=1, save=True, t_acq=0.0448, t_read1=[0.015, 0.0249], t_read2=[0.0351, 0.044], tolerance=5)
+b005_nuit_p6= do_analysis('b005_nuit_p6', alg='blockade', force=1, save=True, t_acq=0.0448, t_read1=[0.015, 0.0249], t_read2=[0.0351, 0.044], tolerance=5)
+b005_nuit_p9= do_analysis('b005_nuit_p9', alg='blockade', force=1, save=True, t_acq=0.0448, t_read1=[0.015, 0.0249], t_read2=[0.0351, 0.0448], tolerance=5)
+b005_large3 = do_analysis('b005_large3', alg='blockade', force=0, save=True, t_acq=0.065, t_read1=[0.016, 0.035], t_read2=[0.046, 0.0645], tolerance=5)
+# %%
+b2_45m_1 = do_analysis('b2_45m_1', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
+b2_45m_2 = do_analysis('b2_45m_2', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
+b2_45m_3 = do_analysis('b2_45m_3', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
+b2_45m_4 = do_analysis('b2_45m_4', alg='blockade', force=1, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[101, ])
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
 
-to_plot = [ # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
+to_plot = [ 
+            b2_45m_1,
+            b2_45m_2,
+            b2_45m_3,
+            b2_45m_4,
+
+    # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
             # b600m_z2,
             # b600m_n1,
@@ -199,21 +223,30 @@ to_plot = [ # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b
             # b08_p15,
             # b08_p12,
             #b005_c1,
-            b005_p18,
-            b005_p14,
-            b005_p12,
-            b005_p10,
-            b005_p8,
-            b005_chirp1,
-            b005_chirp2,
-            b005_chirp3,
-            b005_large1,
-            
+            # b005_p18,
+            # b005_p14,
+            # b005_p12,
+            # b005_p10,
+            # b005_p8,
+            # b005_chirp1,
+            # b005_chirp2,
+            # b005_chirp3,
+            # b005_large1,
+            # b005_narrow1,
+            # b005_narrow2,
+            # b005_narrow3,
+            # b005_large2,
+            # b005_nuit_p8,
+            # b005_nuit_p7,
+            # b005_nuit_p6,
+            # b005_nuit_p9,
+            # b005_large3,
            ]
 [plot(ax, line, i, sigma=1) for i, line in enumerate(to_plot)]
 
 up.modFig1d(fig, ax)
-up.slider(fig, ax, ua.gaussian, [0,10,11], 'sigma')
+#up.slider(fig, ax, ua.gaussian, [0,10,11], 'sigma')
+
 ax.set_xlabel('frequence (GHz)')
 ax.set_ylabel('$P_{flip} (\%)$')
 ax.grid()

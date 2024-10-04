@@ -71,7 +71,7 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 1.265, 0.015, 0.010
+valueRamp, deltaRamp, timeRamp = 1.265, 0.03, 0.020
 valueStep, deltaStep, nbStep = 0.835, 0.010, 101
 
 
@@ -91,14 +91,18 @@ pulseStep = pulseRamp.genMarksOnly(name='step')
 # pulseRamp.plot(pulseStep, wide=True, no_shape_comp=False)
 
 # send to awg
+ui.awgBTrigMode(awg)
 send(pulseStep, channel[step_on])  # channel 1 (2) on P1 (P2)
 awg.output_en.set(True)
 send(pulseRamp, channel[ramp_on])
 awg.output_en.set(True)
-send(pulseRamp, ch=3, run_after=True)
+send(pulseRamp, ch=3)
+awg.output_en.set(False)
+awg.run(True)
 
 ats.acquisition_length_sec.set(timeRamp)
 #ats.sample_rate.set(100000)
+ats.nbwindows.set(1)
 set_function[step_on](valueStep)
 set_function[ramp_on](valueRamp)
 

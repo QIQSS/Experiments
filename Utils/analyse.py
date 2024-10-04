@@ -169,7 +169,7 @@ def countHighLow(arr1d, high=1, low=0):
     l_prop = l_count / arr1d.size
     return dict(high=h_prop, low=l_prop, high_count=h_count, low_count=l_count)
 
-def removeSmallEvents(trace, tolerance, ndim=1, verbose=False, show_plot=False):
+def removeSmallEvents(trace, tolerance, verbose=False, show_plot=False):
     """ repllace event with less points than tolerance 
     by zeros (ones) if event is ones (zeros).
     trace is a 1d array with only zeros and ones.
@@ -307,18 +307,20 @@ def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.0
     dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
     th = findClassifyingThreshold(dg_params, 'min')
     clas = classify(array, th)
+    #up.imshow(clas)
     clas_clean = np.apply_along_axis(removeSmallEvents, arr=clas, axis=1, tolerance=width_tolerance)
+    #up.imshow(clas_clean-clas)
+    
+    return clas
 
-    return clas_clean
-
-def blockade_probability(read1, read2):
+def blockade_probability(read1, read2, tolerance=20):
     """ take read1 and read2 maps.
     exclude from read2 all the traces that are singlet in read1
     count the number of singlet / triplet in read2
     returns the blockade probability
     """
-    read1clas = autoClassify(read1, width_tolerance=20, prominence_factor=0.04, verbose=0)
-    read2clas = autoClassify(read2, width_tolerance=20, prominence_factor=0.04, verbose=0)
+    read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+    read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
     
 
     ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
@@ -335,15 +337,14 @@ def blockade_probability(read1, read2):
 
     return p_blockade, nb_singlet, nb_triplet
 
-def flip_probability(read1, read2):
+def flip_probability(read1, read2, tolerance=20):
     """ take read1 and read2 maps.
     class from read1 all singlets and all triplets
     count the number of flips
     returns the flip probability
     """
-    read1clas = autoClassify(read1, width_tolerance=20, prominence_factor=0.04, verbose=0)
-    read2clas = autoClassify(read2, width_tolerance=20, prominence_factor=0.04, verbose=0)
-    
+    read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+    read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
 
     ids_T_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
     ids_S_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 1)]

@@ -4,7 +4,7 @@ from typing import Literal
 
 # for clipboard and png
 from PyQt5.QtGui import QImage
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QLabel
 import io
 import numpy as np
 # show png
@@ -209,19 +209,18 @@ def imshow(array, **kwargs):
         fig, [ax, scbax] = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[25, 1.5]), figsize=figsize)
     else:
         fig, ax = plt.subplots(1, 1, gridspec_kw=dict(width_ratios=[25]), figsize=figsize)
-    
 
     im = ax.imshow(array, **plot_kwargs)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(kw['title'])
 
+    fig.cbar = None
     if cbar:
-        fig.colorbar(im, label=kw['cbar_label'], ax=ax, cax=cbax)
+        fig.cbar = fig.colorbar(im, label=kw['cbar_label'], ax=ax, cax=cbax)
         cbax.set_title(kw['cbar_title'])
     
     if kw['grid']: ax.grid()
-
 
     # secondary x/y -axis
     if len(x_axis2) > 1:
@@ -240,7 +239,6 @@ def imshow(array, **kwargs):
         scatter_y = [pt[y_id] for pt in sc_pts]
         scatter_c = [pt[c_id] for pt in sc_pts]
         #scatter_c = [i for i in range(len(sc_pts))]
-        print(scatter_x)
         scatter = ax.scatter(scatter_x, scatter_y, c=scatter_c, s=kw['scatter_size'], cmap=kw['scatter_cmap'],
                              alpha=kw['scatter_alpha'])
         
@@ -257,9 +255,10 @@ def imshow(array, **kwargs):
             fig.colorbar(scatter, label=kw['scatter_cbar_label'], ax=ax, cax=scbax)
             #cbax.set_title(kw['scatter_cbar_title'])
             
-    fig.tight_layout()
-    fig = _modFig(fig)
 
+    fig.tight_layout()
+    fig = modFig2d(fig, ax)
+    
     # saving
     if kw['save']:
         called_kwargs.pop('save')
@@ -277,14 +276,14 @@ def imshow(array, **kwargs):
     if not kw['show']: 
         plt.close(fig)
         
-    match kw['return_type']:
-        case 'fig':
+    rt = kw['return_type']
+    if rt == 'fig':
             return fig
-        case 'png':
-            return _figToPng(fig)
-        case 'qt':
-            return uu.mplqt(fig)
-        case 'none':
+    elif 'png':
+         _figToPng(fig)
+    elif 'qt':
+        return uu.mplqt(fig)
+    elif 'none':
             return
 
 def _randomizeColormap(cmap):
@@ -349,19 +348,154 @@ def _saveDataAndFig(path, filename, array, fig=None, metadata={}, save_fig=False
         metadata['_png'] = _figToPng(fig)
     uf.saveToNpz(path, filename, array, metadata=metadata)
 
-def _modFig(fig):
-    """ mod and return the plt fig with custom stuff """
-    # ctrl+c to copy to clipboard
-    def figToClipboard():
-        with io.BytesIO() as buffer:
-            fig.savefig(buffer)
-            QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))    
-            print('Custom fig: image copied')
-    def onKeyPress(event):
-        if event.key == "ctrl+c":
-            figToClipboard()
-    fig.canvas.mpl_connect('key_press_event', onKeyPress)
+
+def _figToClipboard(fig):
+    with io.BytesIO() as buffer:
+        fig.savefig(buffer)
+        QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))    
+        #print('Custom fig: image copied')
+
+def _modFig(fig, ax):
     
+    """ mod the plt fig with custom stuff (clipboard and vi bindings)"""
+    fig.canvas.mpl_disconnect(fig.canvas.manager.key_press_handler_id)
+    
+    toolbar = fig.canvas.manager.toolbar
+    toolbar.addSeparator()
+    fig.status = QLabel('')
+    toolbar.addWidget(fig.status)
+    def write(t=''):
+        #t = ' ' + t if t != '' else t
+        fig.status.setText(fig.mode+'>'+f"[{fig.key_mode}]{t}")
+        
+    # TODO: merge focused and mode -> mode
+    # key_mode: wait for one key event, not persistent
+    # mode: rebind some keys but not all, persistent
+    fig.key_mode = '' # A key modifier.
+    fig.mode = 'n' # A mode is like a key_mode but persistent (disable normal bindings)
+    fig.focused = 'main' # An area on the figure with its own bindings (enable normal bindings)
+    
+    fig.default_lims = [ax.get_xlim(), ax.get_ylim()]
+    
+    def changeKeyMode(mode='', text=''):
+        fig.key_mode = mode
+        write(text)
+    changeKeyMode()
+
+    fig.onFocusChange_functions = {'main': lambda boo: None}
+    def changeFocus(new):
+        fig.onFocusChange_functions.get(fig.focused, lambda boo: None)(False)
+        fig.onFocusChange_functions.get(new, lambda boo: None)(True)
+        fig.focused = new
+
+    fig.onModeChange_functions = {'normal': lambda boo: None}
+    def changeMode(new):
+        fig.onModeChange_functions.get(fig.mode, lambda boo: None)(False)
+        fig.onModeChange_functions.get(new, lambda boo: None)(True)
+        fig.mode = new
+        
+    def zoomReset(xy='xy'):
+        if 'x' in xy: ax.set_xlim(*fig.default_lims[0])
+        if 'y' in xy: ax.set_ylim(*fig.default_lims[1])
+    
+    def move(xy, p=0.1):
+        lim, setlim = {'x':(ax.get_xlim(),ax.set_xlim), 'y':(ax.get_ylim(),ax.set_ylim)}[xy]
+        setlim(lim[0] + p * (lim[1] - lim[0]), lim[1] + p * (lim[1] - lim[0]))
+
+    def zoom(xy, p=0.1):
+        lim, setlim = {'x':(ax.get_xlim(),ax.set_xlim), 'y':(ax.get_ylim(),ax.set_ylim)}[xy]
+        setlim(lim[0] + p * (lim[1] - lim[0]), lim[1] - p * (lim[1] - lim[0]))
+
+    def onKeyPress(event):
+        k = event.key
+                
+        mode_keys = {'g':'oto: main, cbar, legend',
+                     'm':'ode: cursor, normal',
+                     'q':'uit?', 
+                     'z':'oom: in, out, reset', 
+                     'zr':'eset: x, y, both',
+                     't':'oggle: leg, fscrn',
+                     
+                    }
+
+        if fig.key_mode == '':
+            
+            if k in mode_keys.keys():
+                changeKeyMode(k, mode_keys[k])
+                return 'break'
+            
+            # vi basics
+            mvmt = {'h': -0.1, 'l': +0.1, 'j': -0.1, 'k': +0.1}
+            mvmt_precise = {'ctrl+'+k : v/10 for k, v in mvmt.items()}
+            span = {k.upper() : v for k, v in mvmt.items()}
+            span_precise = {'ctrl+'+k : v/10 for k, v in span.items()}
+            
+            if k in mvmt.keys() and fig.focused == 'main':
+                move('x' if k in ['h', 'l'] else 'y', mvmt[k])
+                
+            elif k in mvmt_precise.keys() and fig.focused == 'main':
+                move('x' if k in ['ctrl+h', 'ctrl+l'] else 'y', mvmt_precise[k])
+                
+            elif k in span and fig.focused == 'main':
+                zoom('x' if k in ['H', 'L'] else 'y', span[k])
+                
+            elif k in span_precise and fig.focused == 'main':
+                zoom('x' if k in ['ctrl+H', 'ctrl+L'] else 'y', span_precise[k])
+            
+            # copy
+            elif k == "ctrl+c" or k == "y":
+                _figToClipboard(fig)
+                write("Yanked!")
+        
+        elif fig.key_mode == 'm':
+            modes = {'c': 'cursor', 'n': 'n'}
+            if k in modes.keys():
+                changeMode(modes[k])
+                
+        elif fig.key_mode == 'g':
+            focuses = {'l':'legend', 'c':'colorbar', 'm':'main'}
+            if k in focuses.keys(): changeFocus(focuses[k])
+
+        elif fig.key_mode == 't':
+            if k == 'l':
+                if ax.get_legend(): ax.get_legend().set_visible(not ax.get_legend().get_visible())
+                else: ax.legend()
+            elif event.key == 'f':
+                fig.canvas.manager.full_screen_toggle()
+        
+        # zoom mode:  
+        elif fig.key_mode == 'z':
+            zoomio = {'i': 0.1, 'o': -0.1}
+            
+            if k == 'r':
+                changeKeyMode('zr', mode_keys['zr'])
+                return 'break'
+            
+            
+            elif k in 'z':
+                zoomReset()
+            elif k in zoomio.keys():
+                zoom('y', zoomio[k])
+                zoom('x', zoomio[k])
+
+        # zoom reset
+        elif fig.key_mode == 'zr':
+            if k in 'xy':
+                zoomReset(k)
+            if k in 'b': 
+                zoomReset()
+        
+        
+        
+        elif fig.key_mode == 'q':
+            if k == 'q':
+                fig.canvas.manager.destroy()
+
+        changeKeyMode()
+    
+        fig.canvas.draw()
+
+    fig.canvas.mpl_connect('key_press_event', onKeyPress)
     return fig            
     
 def showPng(binary):
@@ -389,15 +523,14 @@ def imshowFromNpzDict(npzdict, **new_kwargs):
     imshow_kwargs = npzdict.get('metadata', {}).get('imshow_kwargs', {})
     array = npzdict.get('array')
     imshow_kwargs = uu.mergeDict(imshow_kwargs, new_kwargs)
-    imshow(array, **imshow_kwargs)
+    return imshow(array, **imshow_kwargs)
     
-def imshowFromNpz(filename, return_dict=False, **new_kwargs):
+def imshowFromNpz(filename, **new_kwargs):
     """ if the Npz was saved with imshow(array, save=True),
     it will load the file and call imshow with the right kwargs
     """
     npzdict = uf.loadNpz(filename)
-    imshowFromNpzDict(npzdict, **new_kwargs)
-    if return_dict: return npzdict
+    return imshowFromNpzDict(npzdict, **new_kwargs)
 
 #### QPLOT
 def _qplot_make_kwargs(
@@ -529,7 +662,7 @@ def qplot(array, x_axis=None, show=True,
             ax.axvline(x=vl, linestyle=':', label=str(vline))
             
     # modded fig
-    fig = _modFig(fig)
+    fig = _modFig(fig, ax)
     
     # saving
     if save:
@@ -567,8 +700,9 @@ def scatter(tuplelist, x_id=0, y_id=1, val_id=2):
 #### MOD FIG
 
 def legend_lines_toggle(fig, ax):
-    fig = _modFig(fig)
     
+    fig.legend_current_index = 0
+
     leg = ax.legend()
     lines = list(ax.lines)
     
@@ -580,8 +714,7 @@ def legend_lines_toggle(fig, ax):
         leg_to_plot[legline] = (line, legline, textline)
         leg_to_plot[textline] = (line, legline, textline)
         
-    def on_pick(event):
-        artist = event.artist
+    def toggle(artist):
         if artist in leg_to_plot:
             line, legline, text = leg_to_plot[artist]
             
@@ -590,8 +723,45 @@ def legend_lines_toggle(fig, ax):
             text.set_alpha(1.0 if visible else 0.2)
             legline.set_alpha(1.0 if visible else 0.2)
             fig.canvas.draw()
+            
+    def on_pick(event):
+        artist = event.artist
+        toggle(artist)
+    
+    def on_key(event):
+        num_entries = len(leg.get_lines())
+        k = event.key
+        direction = {'j':+1, 'k':-1}
+        if k in direction.keys() and fig.focused == 'legend':
+            current_index = (fig.legend_current_index + direction[k]) % num_entries
+            fig.legend_current_index = current_index
+            highlight_current_entry()
+            
+        elif event.key == ' ' and fig.focused=='legend':
+            textline = leg.get_texts()[fig.legend_current_index]
+            toggle(textline)
+            
+
+    def highlight_current_entry(boo=True):
+        # Reset background for all legend texts
+        for i in range(len(leg.get_lines())):
+            text = leg.get_texts()[i]
+            text.set_bbox(dict(facecolor='none', edgecolor='none'))  # Clear the background
+        if not boo: return
+        # Highlight the current entry with a colored background
+        selected_text = leg.get_texts()[fig.legend_current_index]
+        selected_text.set_bbox(dict(facecolor='lightgray', edgecolor='none'))  # Change background color
+        
+        fig.canvas.draw()
+    
+    def on_legend_focus(boo):
+        highlight_current_entry(boo)
+        
+    fig.onFocusChange_functions['legend'] = on_legend_focus
+        
 
     fig.canvas.mpl_connect('pick_event', on_pick)
+    fig.canvas.mpl_connect('key_press_event', on_key)
 
 def slider(fig, ax, function, range_, name='param'):
     fig.subplots_adjust(right=0.8)
@@ -621,21 +791,69 @@ def slider(fig, ax, function, range_, name='param'):
 
     slider.on_changed(update)
 
-def modFig1d(fig, ax):
-    """
-    keybinds:   c toggle cursors
-                ctrl+c copy to clipboard
-    """
+def cursor_index(fig, ax):
+    import mplcursors
+    bindings = dict(toggle_enabled = None, toggle_visible = {'key':None})
+    c = mplcursors.cursor(ax, hover=True, bindings=bindings)
+    c.connect("add", lambda sel: sel.annotation.set_text(f"{sel.artist.get_label()}\n Index: {int(sel.index) if not isinstance(sel.index, tuple) else (int(sel.index[0]), int(sel.index[1]))}"))
     
-    fig = _modFig(fig)
+    fig.cursor = c # keep globally
+    c.enabled = False
+    c.visible = False
+    
+    def on_cursor_focus(boo):
+        fig.cursor.visible = boo
+        fig.cursor.enabled = boo
+        print(boo)
+        
+    fig.onModeChange_functions['cursor'] = on_cursor_focus
+        
 
-    def onKeyPress(event):
-        if event.key == "c":
-            fig.cursor.visible = not fig.cursor.visible
-    fig.canvas.mpl_connect('key_press_event', onKeyPress)
-
+def modFig1d(fig, ax):
+    
+    fig = _modFig(fig, ax)
+    
+    cursor_index(fig, ax)
     legend_lines_toggle(fig, ax)
-     
+    
+def modFig2d(fig, ax):
+    fig = _modFig(fig, ax)
+    
+    #cursor_index(fig, ax)
+    def on_key(event):
+        key = event.key
+        if fig.cbar is not None and fig.focused == 'colorbar':
+            cbar = fig.cbar
+            cbar_ax = cbar.ax
+            cbar_norm = cbar.norm
+            
+            ylim = cbar_ax.get_ylim()
+            delta = 0.1 * (ylim[1] - ylim[0])
+
+            if key == 'j':
+                new_ylim = (ylim[0] - delta, ylim[1] - delta)
+            elif key == 'k':
+                new_ylim = (ylim[0] + delta, ylim[1] + delta)
+            elif key == 'J':
+                new_ylim = (ylim[0] + delta, ylim[1] - delta)
+            elif key == 'K':
+                new_ylim = (ylim[0] - delta, ylim[1] + delta)
+            elif key == 'r':
+                new_ylim = fig.cbar.default_lim
+            else:
+                return
+            cbar_ax.set_ylim(new_ylim)
+            cbar.norm.vmin = cbar_norm.vmin + (new_ylim[0] - ylim[0])
+            cbar.norm.vmax = cbar_norm.vmax + (new_ylim[1] - ylim[1])
+            fig.canvas.draw_idle()
+
+    if hasattr(fig, 'cbar'):
+        fig.cbar.default_lim = fig.cbar.ax.get_ylim()
+    
+    fig.keyPress_dim = on_key
+    fig.canvas.mpl_connect('key_press_event', on_key)
+    
+    return fig
 
 #### SPECIAL CASE PLOTS
 
