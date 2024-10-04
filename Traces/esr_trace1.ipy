@@ -1,4 +1,4 @@
-_# %% imports
+# %% imports
 # -*- coding: utf-8 -*-
 OS = 'w' # 'l' | 'w'
 LS_PATH, LOG_PATH = \
@@ -181,7 +181,8 @@ b005_large3 = do_analysis('b005_large3', alg='blockade', force=0, save=True, t_a
 b2_45m_1 = do_analysis('b2_45m_1', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
 b2_45m_2 = do_analysis('b2_45m_2', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
 b2_45m_3 = do_analysis('b2_45m_3', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
-b2_45m_4 = do_analysis('b2_45m_4', alg='blockade', force=1, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[101, ])
+b2_45m_4 = do_analysis('b2_45m_4', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[101, ])
+b2_45m_5 = do_analysis('b2_45m_5', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[])
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
 
@@ -190,6 +191,7 @@ to_plot = [
             b2_45m_2,
             b2_45m_3,
             b2_45m_4,
+            b2_45m_5,
 
     # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
@@ -255,11 +257,8 @@ fig.show()
 
 # %% rabi
 
-rabi1 = do_analysis('rabi1', force=False, save=True, x_lbl='tdrive', t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
-rabi4 = do_analysis('rabi4', skip=[4,9],force=False, save=True, x_lbl='tdrive', t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
-rabi5 = do_analysis('rabi5', force=False, save=True, x_lbl='tdrive', t_acq=0.040, t_read1=[0.015, 0.025], t_read2=[0.030, 0.040])
-
-## %% plot
+b2_45m_rabi = do_analysis('b2_45m_rabi', alg='blockade', x_lbl='tdrive', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
+# %% plot
 
 fig, ax = plt.subplots(figsize=(16,4))
     
@@ -275,9 +274,8 @@ def plot_rabi(ax, meas_npz, color=0, sigma=0):
     ax.plot(sorted_array[::,0]*1e6, sorted_array[::,1]*100, label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
 
 
-to_plot = [rabi1,
-           rabi4,
-           rabi5,
+to_plot = [b2_45m_rabi,
+           
            ]
 [plot_rabi(ax, line, i, 0) for i, line in enumerate(to_plot)]
 

@@ -94,7 +94,7 @@ adb_ramp_time = 0.005
 # vm
 #read_level = {'P1': 1.086, 'P2': 0.598}
 #read_level = {'P1': 1.0895, 'P2': 0.600}
-read_level = {'P1': 1.2450, 'P2': 0.8575}
+read_level = {'P1': 1.2380, 'P2': 0.853}
 filt = 2 # gaussian filter
 
 ##############
@@ -148,13 +148,14 @@ equalizeTime(pulseP2, pulseSR)
 #pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
 points = [(0, x+read_level['P1'],y+read_level['P2']) for x,y in [_read, _31, _30]]
 points += [(1, read_level['P1'],read_level['P2'])]
-imshow('D:/QBB16_SD11b_3/Hlab/20241003/20241003-153705-transition_psb', scatter_points=points)
+imshow('D:/QBB16_SD11b_3/Hlab/20241003/20241003-191420-transition_psb', scatter_points=points)
 genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
 #%%
 acq_time = pulseP1.getMarkDuration(awg_sr)
 ats.acquisition_length_sec.set(acq_time)
 ats.nbwindows.set(1)
 
+ui.awgBTrigMode(awg)
 send(pulseP1, 1)
 send(pulseP2, 2)
 send(pulseSR, 3, run_after=True)
@@ -168,9 +169,7 @@ def vmget():
     data = ua.gaussian(data, filt) if filt else data
     return data
 
-vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
-                      xlabel="time", 
-                      axes_dict={'x': acq_time})
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,xlabel="time",axes_dict={'x': acq_time})
 
 # %% pulse 30 - 40 - 31 - read
 ##### settings
@@ -247,7 +246,7 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,
                       axes_dict={'x': acq_time})
 
 # %% pulse multi sequence
-nb_pulse = 600
+nb_pulse = 1190
 ui.awgContMode(awg)
 tbefore = 0.02
 ats.sample_rate.set(20_000)
@@ -278,18 +277,18 @@ def get(nb=1):
 # 48 000 traces par heure
 
 #timelist = np.linspace(0.1e-6, 20.0e-6, 200)
-freqs = ua.arange(17.37e9, 17.43e9, 0.4e6); print(len(freqs))
+freqs = ua.arange(15.8e9, 17.15e9, 14e6); print(len(freqs))
 #freqs = np.linspace(16.470e9, 16.51e9, 11); print(len(freqs))
 
 points = freqs
 
 
-name = 'b2_45m_4'
+name = 'b2_45m_5'
 nb_get = 1
 ampl = -8
-champs = 0.590
+champs = 0.589
 tdrive = 0.000_8
-chirp = 0e6
+chirp = 32e6
 description = """"""
 
 
@@ -365,3 +364,38 @@ for i in range(len(power)):
         meas.saveArray(acq, metadata=dict(x_axis=acq_time, freq=f))
         vm.close()
     
+# %% RABII sweep
+# 48 000 traces par heure
+
+points = np.linspace(50e-9, 5e-6, 501); print(len(points))
+
+
+name = 'b2_45m_rabi'
+nb_get = 1
+ampl = -8
+champs = 0.590
+chirp = 0e6
+freq = 17.3908e9
+description = """check si pic, else: retune psb en minimisant la stat à 0"""
+
+
+
+########
+meas = um.Measure(LOG_PATH, name, metadata=
+                  dict(nb_traces=nb_get, chirp=chirp,
+                       ampl=ampl, description=description,
+                       champs=champs, acq_len=ats.acquisition_length_sec.get(), freq=freq))
+psg.rf_en.set(True)
+psg.mod_fm_en.set(True) # !!! always True, even when no chirp: needed for trigger.
+psg.ampl.set(ampl)
+psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
+psg.freq_cw.set(freq)
+ 
+for i, td in tqdm(enumerate(points), total=(len(points))):
+    
+    awg2.pulse_width.set(td)
+    acq = get(nb_get)
+    
+    meas.saveArray(acq, metadata=dict(x_axis=acq_time, tdrive=td))
+    vm.close()
+

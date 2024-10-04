@@ -356,24 +356,24 @@ def _figToClipboard(fig):
         #print('Custom fig: image copied')
 
 def _modFig(fig, ax):
-    
     """ mod the plt fig with custom stuff (clipboard and vi bindings)"""
     fig.canvas.mpl_disconnect(fig.canvas.manager.key_press_handler_id)
-    
-    toolbar = fig.canvas.manager.toolbar
-    toolbar.addSeparator()
-    fig.status = QLabel('')
-    toolbar.addWidget(fig.status)
+
+    fig.status = QLabel('')   
+    if toolbar := fig.canvas.manager.toolbar:
+        toolbar.addSeparator()
+        toolbar.addWidget(fig.status)
     def write(t=''):
-        #t = ' ' + t if t != '' else t
-        fig.status.setText(fig.mode+'>'+f"[{fig.key_mode}]{t}")
-        
-    # TODO: merge focused and mode -> mode
-    # key_mode: wait for one key event, not persistent
-    # mode: rebind some keys but not all, persistent
+        comment = fig.mode_comment.get(fig.mode, '')
+        mode = 'n' if fig.mode == 'normal' else fig.mode
+        if comment:
+            mode += f" {comment}"
+        fig.status.setText(mode+'>'+f"[{fig.key_mode}]{t}")
+    fig.write = write
+    
     fig.key_mode = '' # A key modifier.
-    fig.mode = 'n' # A mode is like a key_mode but persistent (disable normal bindings)
-    fig.focused = 'main' # An area on the figure with its own bindings (enable normal bindings)
+    fig.mode = 'normal' # A mode is like a key_mode but persistent, with its own bindings
+    fig.mode_comment = {'normal':'', 'cbar':'', 'gaussian':'', 'legend':''}
     
     fig.default_lims = [ax.get_xlim(), ax.get_ylim()]
     
@@ -381,12 +381,6 @@ def _modFig(fig, ax):
         fig.key_mode = mode
         write(text)
     changeKeyMode()
-
-    fig.onFocusChange_functions = {'main': lambda boo: None}
-    def changeFocus(new):
-        fig.onFocusChange_functions.get(fig.focused, lambda boo: None)(False)
-        fig.onFocusChange_functions.get(new, lambda boo: None)(True)
-        fig.focused = new
 
     fig.onModeChange_functions = {'normal': lambda boo: None}
     def changeMode(new):
@@ -408,20 +402,23 @@ def _modFig(fig, ax):
 
     def onKeyPress(event):
         k = event.key
-                
-        mode_keys = {'g':'oto: main, cbar, legend',
-                     'm':'ode: cursor, normal',
+        
+        mode_keys = {
+                     'm':'ode: normal, cbar, legend',
                      'q':'uit?', 
                      'z':'oom: in, out, reset', 
                      'zr':'eset: x, y, both',
-                     't':'oggle: leg, fscrn',
-                     
+                     't':'oggle: leg, fscrn, grid, tigh',
+                     'f':'ilter: gaussian'
                     }
 
         if fig.key_mode == '':
             
-            if k in mode_keys.keys():
-                changeKeyMode(k, mode_keys[k])
+            if k == 'escape':
+                changeMode('normal')
+            
+            elif k in mode_keys.keys():
+                changeKeyMode(k, text=mode_keys[k])
                 return 'break'
             
             # vi basics
@@ -430,38 +427,44 @@ def _modFig(fig, ax):
             span = {k.upper() : v for k, v in mvmt.items()}
             span_precise = {'ctrl+'+k : v/10 for k, v in span.items()}
             
-            if k in mvmt.keys() and fig.focused == 'main':
+            if k in mvmt.keys() and fig.mode == 'normal':
                 move('x' if k in ['h', 'l'] else 'y', mvmt[k])
                 
-            elif k in mvmt_precise.keys() and fig.focused == 'main':
+            elif k in mvmt_precise.keys() and fig.mode == 'normal':
                 move('x' if k in ['ctrl+h', 'ctrl+l'] else 'y', mvmt_precise[k])
                 
-            elif k in span and fig.focused == 'main':
+            elif k in span and fig.mode == 'normal':
                 zoom('x' if k in ['H', 'L'] else 'y', span[k])
                 
-            elif k in span_precise and fig.focused == 'main':
+            elif k in span_precise and fig.mode == 'normal':
                 zoom('x' if k in ['ctrl+H', 'ctrl+L'] else 'y', span_precise[k])
             
             # copy
             elif k == "ctrl+c" or k == "y":
                 _figToClipboard(fig)
-                write("Yanked!")
-        
+                write(" Yanked!")
+                return 'break'
+            
         elif fig.key_mode == 'm':
-            modes = {'c': 'cursor', 'n': 'n'}
+            modes = {'l':'legend', 'c':'colorbar', 'n': 'normal'}
             if k in modes.keys():
                 changeMode(modes[k])
-                
-        elif fig.key_mode == 'g':
-            focuses = {'l':'legend', 'c':'colorbar', 'm':'main'}
-            if k in focuses.keys(): changeFocus(focuses[k])
 
         elif fig.key_mode == 't':
             if k == 'l':
                 if ax.get_legend(): ax.get_legend().set_visible(not ax.get_legend().get_visible())
                 else: ax.legend()
-            elif event.key == 'f':
+            elif k == 'f':
                 fig.canvas.manager.full_screen_toggle()
+            elif k == 'g':
+                ax.grid()
+            elif k == 't':
+                fig.tight_layout()
+        
+        # filter
+        if fig.key_mode == 'f':
+            if k == 'g':
+                changeMode('gaussian')
         
         # zoom mode:  
         elif fig.key_mode == 'z':
@@ -493,7 +496,7 @@ def _modFig(fig, ax):
 
         changeKeyMode()
     
-        fig.canvas.draw()
+        fig.canvas.draw_idle()
 
     fig.canvas.mpl_connect('key_press_event', onKeyPress)
     return fig            
@@ -732,14 +735,26 @@ def legend_lines_toggle(fig, ax):
         num_entries = len(leg.get_lines())
         k = event.key
         direction = {'j':+1, 'k':-1}
-        if k in direction.keys() and fig.focused == 'legend':
+        if k in direction.keys() and fig.mode == 'legend':
             current_index = (fig.legend_current_index + direction[k]) % num_entries
             fig.legend_current_index = current_index
             highlight_current_entry()
             
-        elif event.key == ' ' and fig.focused=='legend':
+        elif k == ' ' and fig.mode=='legend':
             textline = leg.get_texts()[fig.legend_current_index]
             toggle(textline)
+
+        elif k == 'c' and fig.mode=='legend':
+            textline = leg.get_texts()[fig.legend_current_index]
+            line = leg_to_plot[textline][0]
+            fig.cursor.visible = not fig.cursor.visible
+            fig.cursor.enabled = not fig.cursor.enabled
+            # simulate a mouse move on first point. Only way i found to trigger cursor
+            from matplotlib.backend_bases import MouseEvent
+            first_point = line.get_xydata()[0]
+            t = ax.transData
+            mouse_event = MouseEvent("motion_notify_event", ax.figure.canvas, *t.transform(first_point))
+            ax.figure.canvas.callbacks.process('motion_notify_event', mouse_event)
             
 
     def highlight_current_entry(boo=True):
@@ -757,12 +772,45 @@ def legend_lines_toggle(fig, ax):
     def on_legend_focus(boo):
         highlight_current_entry(boo)
         
-    fig.onFocusChange_functions['legend'] = on_legend_focus
+    fig.onModeChange_functions['legend'] = on_legend_focus
         
 
     fig.canvas.mpl_connect('pick_event', on_pick)
     fig.canvas.mpl_connect('key_press_event', on_key)
 
+def sigma_filter(fig, ax):
+    for l in ax.lines:
+        l.original_data = l.get_ydata()
+    
+    fig.gaussian_sigma = 0
+        
+    def apply_filter(sigma=0):
+        for l in ax.lines:
+            new_ydata = ua.gaussian(l.original_data, sigma)
+            l.set_ydata(new_ydata)
+        fig.mode_comment['gaussian'] = f"{fig.gaussian_sigma}"
+        fig.write()
+        fig.canvas.draw_idle()
+        
+    def on_key(event):
+        direction = {'j':-1, 'k':+1}
+        k=event.key
+        if k in direction.keys() and fig.mode == 'gaussian':
+            fig.gaussian_sigma = fig.gaussian_sigma + direction[k]
+            if fig.gaussian_sigma < 0: fig.gaussian_sigma = 0
+            apply_filter(fig.gaussian_sigma)
+            
+        elif k in 'xr' and fig.mode == 'gaussian':
+            fig.gaussian_sigma = 0
+            apply_filter(fig.gaussian_sigma)
+        
+        elif k in '0123456789':
+            fig.gaussian_sigma = int(k)
+            apply_filter(fig.gaussian_sigma)
+
+    fig.canvas.mpl_connect('key_press_event', on_key)
+    
+    
 def slider(fig, ax, function, range_, name='param'):
     fig.subplots_adjust(right=0.8)
     ax_slide = fig.add_axes([0.85, 0.2, 0.03, 0.5])
@@ -793,9 +841,18 @@ def slider(fig, ax, function, range_, name='param'):
 
 def cursor_index(fig, ax):
     import mplcursors
-    bindings = dict(toggle_enabled = None, toggle_visible = {'key':None})
+    bindings = dict(toggle_enabled = None, toggle_visible = {'key':None}, left='left', right='right')
     c = mplcursors.cursor(ax, hover=True, bindings=bindings)
-    c.connect("add", lambda sel: sel.annotation.set_text(f"{sel.artist.get_label()}\n Index: {int(sel.index) if not isinstance(sel.index, tuple) else (int(sel.index[0]), int(sel.index[1]))}"))
+    def fn(sel):
+        if isinstance(sel.index, tuple):
+            index = (int(sel.index[0], int(sel.index[1])))
+            lbl = "index: "
+        else:
+            index = int(sel.index)
+            xy = sel.artist.get_xydata()[index]
+            lbl = f"i: {index}\nx: {xy[0]}\ny: {xy[1]}"
+        sel.annotation.set_text(lbl)
+    c.connect("add", fn)
     
     fig.cursor = c # keep globally
     c.enabled = False
@@ -804,17 +861,16 @@ def cursor_index(fig, ax):
     def on_cursor_focus(boo):
         fig.cursor.visible = boo
         fig.cursor.enabled = boo
-        print(boo)
         
-    fig.onModeChange_functions['cursor'] = on_cursor_focus
         
 
 def modFig1d(fig, ax):
-    
     fig = _modFig(fig, ax)
     
     cursor_index(fig, ax)
     legend_lines_toggle(fig, ax)
+    sigma_filter(fig, ax)
+    #Cursor(fig, ax)
     
 def modFig2d(fig, ax):
     fig = _modFig(fig, ax)
@@ -822,7 +878,7 @@ def modFig2d(fig, ax):
     #cursor_index(fig, ax)
     def on_key(event):
         key = event.key
-        if fig.cbar is not None and fig.focused == 'colorbar':
+        if fig.cbar is not None and fig.mode == 'colorbar':
             cbar = fig.cbar
             cbar_ax = cbar.ax
             cbar_norm = cbar.norm
@@ -1030,3 +1086,82 @@ def plotSideBySide(*args, inline=False, link_all=False):
          w.show()
          
     return w
+
+class Cursor:
+    """
+    A cross hair cursor.
+    """
+    def __init__(self, fig, ax):
+        self.ax = ax
+        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
+        self.vertical_line = ax.axvline(color='k', lw=0.8, ls='--')
+        # text location in axes coordinates
+        self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
+
+        fig.snapping_cursor = self
+        fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+
+    def set_cross_hair_visible(self, visible):
+        need_redraw = self.horizontal_line.get_visible() != visible
+        self.horizontal_line.set_visible(visible)
+        self.vertical_line.set_visible(visible)
+        self.text.set_visible(visible)
+        return need_redraw
+
+    def on_mouse_move(self, event):
+        if not event.inaxes:
+            need_redraw = self.set_cross_hair_visible(False)
+            if need_redraw:
+                self.ax.figure.canvas.draw()
+        else:
+            self.set_cross_hair_visible(True)
+            x, y = event.xdata, event.ydata
+            # update the line positions
+            self.horizontal_line.set_ydata([y])
+            self.vertical_line.set_xdata([x])
+            self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
+            self.ax.figure.canvas.draw()
+
+class SnappingCursor:
+    """
+    A cross-hair cursor that snaps to the data point of a line, which is
+    closest to the *x* position of the cursor.
+
+    For simplicity, this assumes that *x* values of the data are sorted.
+    """
+    def __init__(self, fig, ax, line):
+        self.ax = ax
+        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
+        self.vertical_line = ax.axvline(color='k', lw=0.8, ls='--')
+        self.x, self.y = line.get_data()
+        self._last_index = None
+        # text location in axes coords
+        self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
+
+    def set_cross_hair_visible(self, visible):
+        need_redraw = self.horizontal_line.get_visible() != visible
+        self.horizontal_line.set_visible(visible)
+        self.vertical_line.set_visible(visible)
+        self.text.set_visible(visible)
+        return need_redraw
+
+    def on_mouse_move(self, event):
+        if not event.inaxes:
+            self._last_index = None
+            need_redraw = self.set_cross_hair_visible(False)
+            if need_redraw:
+                self.ax.figure.canvas.draw()
+        else:
+            self.set_cross_hair_visible(True)
+            x, y = event.xdata, event.ydata
+            index = min(np.searchsorted(self.x, x), len(self.x) - 1)
+            if index == self._last_index:
+                return  # still on the same data point. Nothing to do.
+            self._last_index = index
+            x = self.x[index]
+            y = self.y[index]
+            # update the line positions
+            self.horizontal_line.set_ydata([y])
+            self.vertical_line.set_xdata([x])
+            self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
+            self.ax.figure.canvas.draw()
