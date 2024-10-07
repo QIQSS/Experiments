@@ -310,6 +310,7 @@ def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.0
     p0 = [0.4, 0.4, bins[peaks[0]], bins[peaks[1]], hist[peaks[0]], hist[peaks[1]]]
     dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
     th = findClassifyingThreshold(dg_params, 'min')
+    print(th)
     clas = classify(array, th)
     #up.imshow(clas)
     clas_clean = np.apply_along_axis(removeSmallEvents, arr=clas, axis=1, tolerance=width_tolerance)
