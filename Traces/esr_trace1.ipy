@@ -83,12 +83,10 @@ def do_analysis(measure_name, x_lbl='freq',
         
     return meas_npz
     
-def plot(ax, meas_npz, color=0, sigma=2):
+def plot(ax, meas_npz, color=0):
     array = meas_npz.array
     sorted_indices = np.argsort(array[:, 0])
     sorted_array = array[sorted_indices]
-
-    sorted_array[::,1] = ua.gaussian(sorted_array[::,1], sigma)
 
     md = uu.customDict(meas_npz.metadata)
     lbl = f"chirp {md.chirp*1e-6}Mhz, power {md.ampl}dBm"
@@ -184,7 +182,7 @@ b2_45m_3 = do_analysis('b2_45m_3', alg='blockade', force=0, save=True, t_acq=0.0
 b2_45m_4 = do_analysis('b2_45m_4', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[101, ])
 b2_45m_5 = do_analysis('b2_45m_5', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[])
 # %%
-_31r31r_large1 = do_analysis('31r31r_large1', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[])
+_31r31r_large1 = do_analysis('31r31r_large1', alg='blockade', force=0, save=True, t_acq=0.0128, t_read1=[0.002, 0.006], t_read2=[0.00725, 0.012], tolerance=10, skip=[])
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
 
@@ -194,6 +192,7 @@ to_plot = [
             b2_45m_3,
             b2_45m_4,
             b2_45m_5,
+            _31r31r_large1,
 
     # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
@@ -246,7 +245,7 @@ to_plot = [
             # b005_nuit_p9,
             # b005_large3,
            ]
-[plot(ax, line, i, sigma=1) for i, line in enumerate(to_plot)]
+[plot(ax, line, i) for i, line in enumerate(to_plot)]
 
 up.modFig1d(fig, ax)
 #up.slider(fig, ax, ua.gaussian, [0,10,11], 'sigma')

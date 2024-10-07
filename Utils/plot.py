@@ -197,7 +197,6 @@ def imshow(array, **kwargs):
     if None not in extent:  
         plot_kwargs['extent'] = extent
     
-    
     # PLOT
     # TODO: cbar position / size
     cbar, scatter_cbar = kw['cbar'], kw['scatter_cbar']
@@ -258,7 +257,7 @@ def imshow(array, **kwargs):
             
 
     fig.tight_layout()
-    fig = modFig2d(fig, ax)
+    modFig2d(fig, ax)
     
     # saving
     if kw['save']:
@@ -845,7 +844,7 @@ def histogram_window(fig, ax):
             line_hist.original_xdata = line_hist.get_xdata()
         figH.canvas.draw_idle()
         figH.default_lims = [axH.get_xlim(), axH.get_ylim()] # reset default lims
-
+        
         fig.mode_comment['histogram'] = f"bins:{fig.histogram_bins}, density:{fig.histogram_density}"
         fig.write()
         fig.canvas.draw_idle()
@@ -863,12 +862,13 @@ def histogram_window(fig, ax):
     fig.canvas.mpl_connect('key_press_event', on_key)
     
     def on_change(boo, close=True):
-        if boo:            
+        if boo:  
             if not fig.histogram_ever_open:
                 plt.ioff()
                 fig.histogram_plot = plt.subplots()
                 modFig1d(*fig.histogram_plot)
                 plt.ion()
+                fig.histogram_ever_open = True
 
             figH = fig.histogram_plot[0]
         
@@ -876,6 +876,7 @@ def histogram_window(fig, ax):
             figH.show()
         elif fig.histogram_ever_open:
             if close:
+                figH = fig.histogram_plot[0]
                 figH.canvas.window().hide()
                 plt.close(figH)
         #fig.canvas.window().setFocus(True)
@@ -1006,7 +1007,7 @@ def modFig1d(fig, ax):
     
 def modFig2d(fig, ax):
     fig = _modFig(fig, ax)
-    
+
     image = ax.images[0]
     
     ## general attr    
@@ -1022,13 +1023,10 @@ def modFig2d(fig, ax):
     
     fig.traces_position = 0
     fig.traces_orientation = 'horizontal'
-    plt.ioff()
-    fig.traces_plot = plt.subplots()
-    modFig1d(*fig.traces_plot)
-    plt.ion()
+    fig.traces_ever_open = False
     
-    vline = ax.axvline(x=5, color='red', linestyle='--', linewidth=2, alpha=0.7)
-    hline = ax.axhline(y=5, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    vline = ax.axvline(x=id_to_xpos(0), color='red', linestyle='--', linewidth=2, alpha=0.7)
+    hline = ax.axhline(y=id_to_ypos(0), color='red', linestyle='--', linewidth=2, alpha=0.7)
     min_marker, = ax.plot([], [], 'o', color='g', markersize=5)
     max_marker, = ax.plot([], [], 'o', color='r', markersize=5)
     min_marker.set_visible(False)
@@ -1098,16 +1096,26 @@ def modFig2d(fig, ax):
                               f"<span style='color: green;'>max</span>{max_idx}: {max_value}"
         fig.write()
         fig.canvas.draw_idle()
-    
-    def on_change_traces(boo, **kwargs):
-        update_trace_line()
-        if not boo: 
+
+    def on_change_traces(boo, close=False):
+        if boo:
+            if not fig.traces_ever_open:
+                plt.ioff()
+                fig.traces_plot = plt.subplots()
+                #fig.traces_plot[0].set_title('test')
+                modFig1d(*fig.traces_plot)
+                plt.ion()
+                fig.traces_ever_open = True
+            
+        elif not boo: 
             hline.set_visible(False)
             vline.set_visible(False)
             min_marker.set_visible(False)
             max_marker.set_visible(False)
-            fig.traces_plot[0].canvas.window().hide()
-            plt.close(fig.traces_plot[0])
+            if close:
+                fig.traces_plot[0].canvas.window().hide()
+                plt.close(fig.traces_plot[0])
+        update_trace_line()
     fig.onModeChange_functions['traces'] = on_change_traces
     
     #### sigma
@@ -1148,10 +1156,7 @@ def modFig2d(fig, ax):
     #### hist
     fig.histogram_bins = 100
     fig.histogram_density = False
-    plt.ioff()
-    fig.histogram_plot = plt.subplots()
-    modFig1d(*fig.histogram_plot)
-    plt.ion()
+    fig.histogram_ever_open = False
 
     def plotHist():
         figH, axH = fig.histogram_plot
@@ -1182,14 +1187,22 @@ def modFig2d(fig, ax):
     fig.canvas.mpl_connect('key_press_event', on_key_hist)
     
     def on_change_hist(boo, close=False):
-        figH = fig.histogram_plot[0]
-        
         if boo:
+            if not fig.histogram_ever_open:
+                plt.ioff()
+                fig.histogram_plot = plt.subplots()
+                modFig1d(*fig.histogram_plot)
+                plt.ion()
+                
             plotHist()
+            figH = fig.histogram_plot[0]
             figH.show()
-        elif close:
-            figH.canvas.window().hide()
-            plt.close(figH)
+            
+        elif not boo:
+            if close:
+                figH.canvas.window().hide()
+                plt.close(figH)
+        
     fig.onModeChange_functions['histogram'] = on_change_hist
 
     
