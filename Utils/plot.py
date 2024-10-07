@@ -492,7 +492,8 @@ def _modFig(fig, ax):
         
         elif fig.key_mode == 'q':
             if k == 'q':
-                fig.canvas.manager.destroy()
+                fig.canvas.window().close()
+                #fig.canvas.manager.destroy()
 
         changeKeyMode()
     
@@ -738,7 +739,7 @@ def legend_lines_toggle(fig, ax):
         if k in direction.keys() and fig.mode == 'legend':
             current_index = (fig.legend_current_index + direction[k]) % num_entries
             fig.legend_current_index = current_index
-            highlight_current_entry()
+            highlight_current_entry()        
             
         elif k == ' ' and fig.mode=='legend':
             textline = leg.get_texts()[fig.legend_current_index]
@@ -903,7 +904,7 @@ def modFig2d(fig, ax):
             cbar.norm.vmax = cbar_norm.vmax + (new_ylim[1] - ylim[1])
             fig.canvas.draw_idle()
 
-    if hasattr(fig, 'cbar'):
+    if hasattr(fig, 'cbar') and fig.cbar is not None:
         fig.cbar.default_lim = fig.cbar.ax.get_ylim()
     
     fig.keyPress_dim = on_key
