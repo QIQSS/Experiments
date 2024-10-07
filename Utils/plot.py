@@ -384,10 +384,10 @@ def _modFig(fig, ax):
         write(text)
     changeKeyMode()
 
-    fig.onModeChange_functions = {'normal': lambda boo: None}
+    fig.onModeChange_functions = {'normal': lambda boo, **kargs: None}
     def changeMode(new):
-        fig.onModeChange_functions.get(fig.mode, lambda boo: None)(False)
-        fig.onModeChange_functions.get(new, lambda boo: None)(True)
+        fig.onModeChange_functions.get(fig.mode, lambda boo, **kwargs: None)(False, close=False)
+        fig.onModeChange_functions.get(new, lambda boo, **kwargs: None)(True)
         fig.mode = new
         
     def zoomReset(xy='xy'):
@@ -455,7 +455,7 @@ def _modFig(fig, ax):
         elif fig.key_mode == 't':
             if k == 'l':
                 if ax.get_legend(): ax.get_legend().set_visible(not ax.get_legend().get_visible())
-                else: ax.legend()
+                else: ax.legend([])
             elif k == 'f':
                 fig.canvas.manager.full_screen_toggle()
             elif k == 'g':
@@ -500,7 +500,13 @@ def _modFig(fig, ax):
                 fig.canvas.manager.destroy()
                 fig.canvas.window().close()
                 plt.close(fig)
-                [fn(False) for fn in fig.onModeChange_functions.values()]
+                [fn(False, close=False) for fn in fig.onModeChange_functions.values()]
+
+            elif k == 'a':
+                fig.canvas.manager.destroy()
+                fig.canvas.window().close()
+                plt.close(fig)
+                [fn(False, close=True) for fn in fig.onModeChange_functions.values()]
 
         changeKeyMode()
     
@@ -713,10 +719,13 @@ def scatter(tuplelist, x_id=0, y_id=1, val_id=2):
 def legend_lines_toggle(fig, ax):
     
     fig.legend_current_index = 0
-
-    leg = ax.legend()
-    lines = list(ax.lines)
     
+    lines = list(ax.lines)
+    if len(lines)>0:
+        leg = ax.legend()
+    else:
+        leg = ax.legend([])
+        
     leg_to_plot = {}
     for i, (legline, line) in enumerate(zip(leg.get_lines(), lines)):
         legline.set_picker(True)
@@ -777,7 +786,7 @@ def legend_lines_toggle(fig, ax):
         
         fig.canvas.draw()
     
-    def on_legend_focus(boo):
+    def on_legend_focus(boo, **kwargs):
         highlight_current_entry(boo)
         
     fig.onModeChange_functions['legend'] = on_legend_focus
@@ -829,7 +838,7 @@ def histogram_window(fig, ax):
         axH.clear()
         axH.grid()
         for l in ax.lines:
-            x, hist = ua.histogram(l.get_ydata().flatten(), bins=fig.histogram_bins, 
+            x, hist = ua.histogram(np.array(l.get_ydata()).flatten(), bins=fig.histogram_bins, 
                                    return_type='all', density=fig.histogram_density)
             line_hist = axH.plot(x, hist, color=l.get_color(), label=l.get_label())[0]
             line_hist.original_ydata = line_hist.get_ydata()
@@ -853,21 +862,22 @@ def histogram_window(fig, ax):
             plotHist()
     fig.canvas.mpl_connect('key_press_event', on_key)
     
-    def on_change(boo):
-        if not fig.histogram_ever_open:
-            plt.ioff()
-            fig.histogram_plot = plt.subplots()
-            modFig1d(*fig.histogram_plot)
-            plt.ion()
+    def on_change(boo, close=True):
+        if boo:            
+            if not fig.histogram_ever_open:
+                plt.ioff()
+                fig.histogram_plot = plt.subplots()
+                modFig1d(*fig.histogram_plot)
+                plt.ion()
 
-        figH = fig.histogram_plot[0]
+            figH = fig.histogram_plot[0]
         
-        if boo:
             plotHist()
             figH.show()
-        else:
-            figH.canvas.window().hide()
-            plt.close(figH)
+        elif fig.histogram_ever_open:
+            if close:
+                figH.canvas.window().hide()
+                plt.close(figH)
         #fig.canvas.window().setFocus(True)
         
     
@@ -925,7 +935,7 @@ def markers(fig, ax):
     fig.canvas.mpl_connect('key_press_event', on_key)
 
 
-    def on_change(boo):
+    def on_change(boo, **kwargs):
         toggle()
         if boo: move_markers()
     
@@ -1089,7 +1099,7 @@ def modFig2d(fig, ax):
         fig.write()
         fig.canvas.draw_idle()
     
-    def on_change_traces(boo):
+    def on_change_traces(boo, **kwargs):
         update_trace_line()
         if not boo: 
             hline.set_visible(False)
@@ -1129,7 +1139,7 @@ def modFig2d(fig, ax):
             fig.gaussian_sigma = int(k)
             apply_filter()
         
-    def on_change_gaussian(boo):
+    def on_change_gaussian(boo, **kwargs):
         if boo: apply_filter()
     fig.onModeChange_functions['gaussian'] = on_change_gaussian
     
@@ -1171,13 +1181,13 @@ def modFig2d(fig, ax):
             plotHist()
     fig.canvas.mpl_connect('key_press_event', on_key_hist)
     
-    def on_change_hist(boo):
+    def on_change_hist(boo, close=False):
         figH = fig.histogram_plot[0]
         
         if boo:
             plotHist()
             figH.show()
-        else:
+        elif close:
             figH.canvas.window().hide()
             plt.close(figH)
     fig.onModeChange_functions['histogram'] = on_change_hist
