@@ -43,6 +43,7 @@ COLORS = uu.ModuloList([
 ])
 COLORS_D = uu.ModuloList(['#5b1d2c', '#c6e1ea', '#505c76', '#162067', '#070c20'])
 
+PASTELS = uu.ModuloList(['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF'])
 
 #### IMSHOW
 def _imshow_make_kwargs(
@@ -373,7 +374,8 @@ def _modFig(fig, ax):
     
     fig.key_mode = '' # A key modifier.
     fig.mode = 'normal' # A mode is like a key_mode but persistent, with its own bindings
-    fig.mode_comment = {'normal':'', 'cbar':'', 'gaussian':'', 'legend':''}
+    fig.mode_comment = {'normal':'', 'cbar':'', 'gaussian':'', 'legend':'', 'histogram':'',
+                        'markers':'', 'traces':''}
     
     fig.default_lims = [ax.get_xlim(), ax.get_ylim()]
     
@@ -404,17 +406,17 @@ def _modFig(fig, ax):
         k = event.key
         
         mode_keys = {
-                     'm':'ode: normal, cbar, legend',
+                     'm':'ode: normal, cbar, legend, markers, traces',
                      'q':'uit?', 
                      'z':'oom: in, out, reset', 
                      'zr':'eset: x, y, both',
                      't':'oggle: leg, fscrn, grid, tigh',
-                     'f':'ilter: gaussian'
+                     'f':'ilter: gaussian, histogram'
                     }
 
         if fig.key_mode == '':
             
-            if k == 'escape':
+            if k in ['escape', 'ctrl+c']:
                 changeMode('normal')
             
             elif k in mode_keys.keys():
@@ -440,13 +442,13 @@ def _modFig(fig, ax):
                 zoom('x' if k in ['ctrl+H', 'ctrl+L'] else 'y', span_precise[k])
             
             # copy
-            elif k == "ctrl+c" or k == "y":
+            elif k == "y":
                 _figToClipboard(fig)
                 write(" Yanked!")
                 return 'break'
             
         elif fig.key_mode == 'm':
-            modes = {'l':'legend', 'c':'colorbar', 'n': 'normal'}
+            modes = {'l':'legend', 'c':'colorbar', 'n': 'normal', 'm':'markers', 't':'traces'}
             if k in modes.keys():
                 changeMode(modes[k])
 
@@ -465,6 +467,9 @@ def _modFig(fig, ax):
         if fig.key_mode == 'f':
             if k == 'g':
                 changeMode('gaussian')
+                
+            if k == 'h':
+                changeMode('histogram')
         
         # zoom mode:  
         elif fig.key_mode == 'z':
@@ -493,6 +498,9 @@ def _modFig(fig, ax):
         elif fig.key_mode == 'q':
             if k == 'q':
                 fig.canvas.manager.destroy()
+                fig.canvas.window().close()
+                plt.close(fig)
+                [fn(False) for fn in fig.onModeChange_functions.values()]
 
         changeKeyMode()
     
@@ -779,14 +787,14 @@ def legend_lines_toggle(fig, ax):
     fig.canvas.mpl_connect('key_press_event', on_key)
 
 def sigma_filter(fig, ax):
-    for l in ax.lines:
-        l.original_data = l.get_ydata()
     
     fig.gaussian_sigma = 0
         
-    def apply_filter(sigma=0):
+    def apply_filter():
+        fig.test = ax.lines
         for l in ax.lines:
-            new_ydata = ua.gaussian(l.original_data, sigma)
+            if not getattr(l, 'is_data', True): continue
+            new_ydata = ua.gaussian(l.original_ydata, fig.gaussian_sigma)
             l.set_ydata(new_ydata)
         fig.mode_comment['gaussian'] = f"{fig.gaussian_sigma}"
         fig.write()
@@ -798,19 +806,132 @@ def sigma_filter(fig, ax):
         if k in direction.keys() and fig.mode == 'gaussian':
             fig.gaussian_sigma = fig.gaussian_sigma + direction[k]
             if fig.gaussian_sigma < 0: fig.gaussian_sigma = 0
-            apply_filter(fig.gaussian_sigma)
+            apply_filter()
             
         elif k in 'xr' and fig.mode == 'gaussian':
             fig.gaussian_sigma = 0
-            apply_filter(fig.gaussian_sigma)
+            apply_filter()
         
         elif k in '0123456789':
             fig.gaussian_sigma = int(k)
-            apply_filter(fig.gaussian_sigma)
+            apply_filter()
 
     fig.canvas.mpl_connect('key_press_event', on_key)
+
+def histogram_window(fig, ax):
+
+    fig.histogram_bins = 100
+    fig.histogram_density = False
+    fig.histogram_ever_open = False
     
+    def plotHist():
+        figH, axH = fig.histogram_plot
+        axH.clear()
+        axH.grid()
+        for l in ax.lines:
+            x, hist = ua.histogram(l.get_ydata().flatten(), bins=fig.histogram_bins, 
+                                   return_type='all', density=fig.histogram_density)
+            line_hist = axH.plot(x, hist, color=l.get_color(), label=l.get_label())[0]
+            line_hist.original_ydata = line_hist.get_ydata()
+            line_hist.original_xdata = line_hist.get_xdata()
+        figH.canvas.draw_idle()
+        figH.default_lims = [axH.get_xlim(), axH.get_ylim()] # reset default lims
+
+        fig.mode_comment['histogram'] = f"bins:{fig.histogram_bins}, density:{fig.histogram_density}"
+        fig.write()
+        fig.canvas.draw_idle()
     
+    def on_key(event):
+        direction = {'j':-10, 'k':+10, 'J':-100, 'K':100, 'down':-1, 'up':+1}
+        k=event.key
+        if k in direction.keys() and fig.mode == 'histogram':
+            fig.histogram_bins = fig.histogram_bins + direction[k]
+            if fig.histogram_bins < 1: fig.histogram_bins = 1
+            plotHist()
+        elif k == 'd':
+            fig.histogram_density = not fig.histogram_density
+            plotHist()
+    fig.canvas.mpl_connect('key_press_event', on_key)
+    
+    def on_change(boo):
+        if not fig.histogram_ever_open:
+            plt.ioff()
+            fig.histogram_plot = plt.subplots()
+            modFig1d(*fig.histogram_plot)
+            plt.ion()
+
+        figH = fig.histogram_plot[0]
+        
+        if boo:
+            plotHist()
+            figH.show()
+        else:
+            figH.canvas.window().hide()
+            plt.close(figH)
+        #fig.canvas.window().setFocus(True)
+        
+    
+    fig.onModeChange_functions['histogram'] = on_change
+
+def markers(fig, ax):
+        
+    fig.markers_position = list(fig.default_lims[0]) + list(fig.default_lims[1]) # v1, v2, h1, h2
+    fig.markers_selected = 0    
+
+    from matplotlib.lines import Line2D
+    v_lines = [Line2D([pos, pos], [ax.get_ylim()[0], ax.get_ylim()[1]], color='grey', linestyle='--', linewidth=1) for pos in fig.markers_position[:2]]
+    h_lines = [Line2D([ax.get_xlim()[0], ax.get_xlim()[1]], [pos, pos], color='grey', linestyle='--', linewidth=1) for pos in fig.markers_position[2:]]
+
+    fig.markers_lines = v_lines + h_lines    
+    for l in fig.markers_lines:
+        l.is_data = False
+        ax.add_artist(l)
+
+    def toggle():
+        visible = not v_lines[0].get_visible()  # Check the visibility of the first vertical line
+        for line in v_lines + h_lines:
+            line.set_visible(visible)
+    toggle() # off by default
+            
+    def move_markers():
+        for i, line in enumerate(v_lines + h_lines):
+            if i == fig.markers_selected:
+                line.set_color('red')
+            else:
+                line.set_color('grey')
+                
+        for i, line in enumerate(v_lines):
+            line.set_xdata(fig.markers_position[i])  # Update vertical line positions
+        for i, line in enumerate(h_lines):
+            line.set_ydata(fig.markers_position[i + 2])  # Update horizontal line positions
+
+        fig.mode_comment['markers'] = f"{fig.markers_position}"
+        fig.write()
+        fig.canvas.draw_idle()
+        
+    def on_key(event):
+        v_direction = {'h':-1, 'l':+1, 'H':-0.1, 'L':+0.1}
+        h_direction = {'j':-1, 'k':+1, 'J':-0.1, 'K':+0.1}
+        k=event.key
+        
+        direction = v_direction if fig.markers_selected in [0,1] else h_direction
+        if direction is not None and k in direction.keys() and fig.mode == 'markers':
+            fig.markers_position[fig.markers_selected] += direction[k]
+            move_markers()
+        elif k == 's':
+            fig.markers_selected = (fig.markers_selected+1) % 4
+            move_markers()
+        
+    fig.canvas.mpl_connect('key_press_event', on_key)
+
+
+    def on_change(boo):
+        toggle()
+        if boo: move_markers()
+    
+    fig.onModeChange_functions['markers'] = on_change
+
+
 def slider(fig, ax, function, range_, name='param'):
     fig.subplots_adjust(right=0.8)
     ax_slide = fig.add_axes([0.85, 0.2, 0.03, 0.5])
@@ -843,7 +964,8 @@ def cursor_index(fig, ax):
     import mplcursors
     bindings = dict(toggle_enabled = None, toggle_visible = {'key':None}, left='left', right='right')
     c = mplcursors.cursor(ax, hover=True, bindings=bindings)
-    def fn(sel):
+    
+    def set_text(sel):
         if isinstance(sel.index, tuple):
             index = (int(sel.index[0], int(sel.index[1])))
             lbl = "index: "
@@ -852,65 +974,270 @@ def cursor_index(fig, ax):
             xy = sel.artist.get_xydata()[index]
             lbl = f"i: {index}\nx: {xy[0]}\ny: {xy[1]}"
         sel.annotation.set_text(lbl)
-    c.connect("add", fn)
+    c.connect("add", set_text)
     
     fig.cursor = c # keep globally
     c.enabled = False
     c.visible = False
-    
-    def on_cursor_focus(boo):
-        fig.cursor.visible = boo
-        fig.cursor.enabled = boo
-        
         
 
 def modFig1d(fig, ax):
     fig = _modFig(fig, ax)
-    
+
+    for l in ax.lines: 
+        l.original_ydata = l.get_ydata()
+        l.original_xdata = l.get_xdata()
+        
     cursor_index(fig, ax)
     legend_lines_toggle(fig, ax)
     sigma_filter(fig, ax)
-    #Cursor(fig, ax)
+    histogram_window(fig, ax)
+    markers(fig, ax)
     
 def modFig2d(fig, ax):
     fig = _modFig(fig, ax)
     
-    #cursor_index(fig, ax)
+    image = ax.images[0]
+    
+    ## general attr    
+    fig.original_data = image.get_array()
+    fig.default_clim = [image.get_clim(), image.norm.vmin, image.norm.vmax]
+
+    #### TRACES
+    im_shape = fig.original_data.shape
+    delta_x = abs(np.diff(fig.default_lims[0])[0])/im_shape[1]
+    delta_y = abs(np.diff(fig.default_lims[1])[0])/im_shape[0]
+    id_to_xpos = lambda id_: id_ * delta_x + fig.default_lims[0][0] + delta_x / 2
+    id_to_ypos = lambda id_: id_ * delta_y + fig.default_lims[1][0] + delta_y / 2
+    
+    fig.traces_position = 0
+    fig.traces_orientation = 'horizontal'
+    plt.ioff()
+    fig.traces_plot = plt.subplots()
+    modFig1d(*fig.traces_plot)
+    plt.ion()
+    
+    vline = ax.axvline(x=5, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    hline = ax.axhline(y=5, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    min_marker, = ax.plot([], [], 'o', color='g', markersize=5)
+    max_marker, = ax.plot([], [], 'o', color='r', markersize=5)
+    min_marker.set_visible(False)
+    max_marker.set_visible(False)
+    vline.set_visible(False)
+    hline.set_visible(False)
+
+    def plotTrace():
+        figT, axT = fig.traces_plot
+        axT.clear()
+        axT.grid()
+        if fig.traces_orientation == 'horizontal':
+            trace = ax.images[0].get_array()[fig.traces_position]
+        elif fig.traces_orientation == 'vertical':
+            trace = ax.images[0].get_array()[:,fig.traces_position]
+        #plt.pause(0.1)
+        l = axT.plot(trace)[0]
+        l.original_ydata = l.get_ydata()
+        l.original_xdata = l.get_xdata()
+        figT.default_lims = [axT.get_xlim(), axT.get_ylim()]
+        
+        figT.canvas.draw_idle()
+    
+    def update_trace_line():
+        vline.set_visible(fig.traces_orientation == 'vertical')
+        hline.set_visible(fig.traces_orientation == 'horizontal')
+        min_marker.set_visible(True)
+        max_marker.set_visible(True)
+        
+        if fig.traces_orientation == 'vertical':
+            hline.set_visible(False)
+            vline.set_visible(True)
+            if fig.traces_position >= im_shape[1]:
+                fig.traces_position = im_shape[1]-1
+            pos_value = id_to_xpos(fig.traces_position)
+            vline.set_xdata([pos_value]*2)
+            trace = ax.images[0].get_array()[:,fig.traces_position]
+            
+            min_idx = np.nanargmin(trace)
+            max_idx = np.nanargmax(trace)
+            min_marker.set_data(pos_value, id_to_ypos(min_idx))
+            max_marker.set_data(pos_value, id_to_ypos(max_idx))
+
+            
+        elif fig.traces_orientation == 'horizontal':
+            hline.set_visible(True)
+            vline.set_visible(False)
+
+            if fig.traces_position >= im_shape[0]:
+                fig.traces_position = im_shape[0]-1
+            pos_value = id_to_ypos(fig.traces_position)
+            hline.set_ydata([pos_value]*2)
+            trace = ax.images[0].get_array()[fig.traces_position]
+            
+            min_idx = np.nanargmin(trace)
+            max_idx = np.nanargmax(trace)
+            
+            min_marker.set_data(id_to_xpos(min_idx), pos_value)
+            max_marker.set_data(id_to_xpos(max_idx), pos_value)
+
+            
+        min_value = round(np.nanmin(trace), 4)
+        max_value = round(np.nanmax(trace), 4)
+        pos_value = round(pos_value, 4)
+        fig.mode_comment['traces'] = f"{fig.traces_orientation[0]}{fig.traces_position}: {pos_value} " \
+                              f"<span style='color: red;'>min</span>{min_idx}: {min_value}, " \
+                              f"<span style='color: green;'>max</span>{max_idx}: {max_value}"
+        fig.write()
+        fig.canvas.draw_idle()
+    
+    def on_change_traces(boo):
+        update_trace_line()
+        if not boo: 
+            hline.set_visible(False)
+            vline.set_visible(False)
+            min_marker.set_visible(False)
+            max_marker.set_visible(False)
+            fig.traces_plot[0].canvas.window().hide()
+            plt.close(fig.traces_plot[0])
+    fig.onModeChange_functions['traces'] = on_change_traces
+    
+    #### sigma
+    fig.gaussian_sigma = 0
+    fig.gaussian_mode = 'lbl' # lbl, 2d
+        
+    def apply_filter():
+        fn = {'lbl': ua.gaussianlbl, '2d': ua.gaussian2d}
+        filtered = fn[fig.gaussian_mode](fig.original_data, fig.gaussian_sigma)
+        image.set_data(filtered)
+        fig.mode_comment['gaussian'] = f"alg:{fig.gaussian_mode}, sigma:{fig.gaussian_sigma}"
+        fig.write()
+        fig.canvas.draw_idle()
+        
+    def on_key_gaussian(event):
+        direction = {'j':-1, 'k':+1}
+        k=event.key
+        if k in direction.keys() and fig.mode == 'gaussian':
+            fig.gaussian_sigma = fig.gaussian_sigma + direction[k]
+            if fig.gaussian_sigma < 0: fig.gaussian_sigma = 0
+            apply_filter()
+        elif k in 'xr' and fig.mode == 'gaussian':
+            fig.gaussian_sigma = 0
+            apply_filter()
+        elif k in 'ca' and fig.mode == 'gaussian':
+            fig.gaussian_mode = {'lbl':'2d', '2d':'lbl'}[fig.gaussian_mode]
+            apply_filter()
+        elif k in '0123456789' and fig.mode == 'gaussian':
+            fig.gaussian_sigma = int(k)
+            apply_filter()
+        
+    def on_change_gaussian(boo):
+        if boo: apply_filter()
+    fig.onModeChange_functions['gaussian'] = on_change_gaussian
+    
+    fig.canvas.mpl_connect('key_press_event', on_key_gaussian)
+    
+    #### hist
+    fig.histogram_bins = 100
+    fig.histogram_density = False
+    plt.ioff()
+    fig.histogram_plot = plt.subplots()
+    modFig1d(*fig.histogram_plot)
+    plt.ion()
+
+    def plotHist():
+        figH, axH = fig.histogram_plot
+        axH.clear()
+        x, hist = ua.histogram(image.get_array().flatten(), bins=fig.histogram_bins, 
+                               return_type='all', density=fig.histogram_density)
+        l = axH.plot(x,hist, label='histogram')[0]
+        l.original_ydata = l.get_ydata()
+        l.original_xdata = l.get_xdata()
+        figH.default_lims = [axH.get_xlim(), axH.get_ylim()]
+        axH.grid()
+        figH.canvas.draw_idle()
+        figH.default_lims = [axH.get_xlim(), axH.get_ylim()] # reset default lims
+        fig.mode_comment['histogram'] = f"bins:{fig.histogram_bins}, density:{fig.histogram_density}"
+        fig.write()
+        fig.canvas.draw_idle()
+    
+    def on_key_hist(event):
+        direction = {'j':-10, 'k':+10, 'J':-100, 'K':100, 'down':-1, 'up':+1}
+        k=event.key
+        if k in direction.keys() and fig.mode == 'histogram':
+            fig.histogram_bins = fig.histogram_bins + direction[k]
+            if fig.histogram_bins < 1: fig.histogram_bins = 1
+            plotHist()
+        elif k == 'd':
+            fig.histogram_density = not fig.histogram_density
+            plotHist()
+    fig.canvas.mpl_connect('key_press_event', on_key_hist)
+    
+    def on_change_hist(boo):
+        figH = fig.histogram_plot[0]
+        
+        if boo:
+            plotHist()
+            figH.show()
+        else:
+            figH.canvas.window().hide()
+            plt.close(figH)
+    fig.onModeChange_functions['histogram'] = on_change_hist
+
+    
+    #### binds
     def on_key(event):
         key = event.key
-        if fig.cbar is not None and fig.mode == 'colorbar':
-            cbar = fig.cbar
-            cbar_ax = cbar.ax
-            cbar_norm = cbar.norm
+        if fig.mode == 'colorbar':
             
-            ylim = cbar_ax.get_ylim()
-            delta = 0.1 * (ylim[1] - ylim[0])
+            clim = image.get_clim()
+            
+            delta = 0.1 * (clim[1] - clim[0])
+            directions = {'j':[-1,-1], 'k':[1,1], 'J':[1,-1], 'K':[-1,1]}
+            if key in directions.keys():
+                new_clim = (clim[0] + directions[key][0] * delta, 
+                            clim[1] + directions[key][1] * delta)
+                image.set_clim(new_clim)
+                image.norm.vmin = image.norm.vmin + (new_clim[0] - clim[0])
+                image.norm.vmax = image.norm.vmax + (new_clim[1] - clim[1])
 
-            if key == 'j':
-                new_ylim = (ylim[0] - delta, ylim[1] - delta)
-            elif key == 'k':
-                new_ylim = (ylim[0] + delta, ylim[1] + delta)
-            elif key == 'J':
-                new_ylim = (ylim[0] + delta, ylim[1] - delta)
-            elif key == 'K':
-                new_ylim = (ylim[0] - delta, ylim[1] + delta)
             elif key == 'r':
-                new_ylim = fig.cbar.default_lim
-            else:
-                return
-            cbar_ax.set_ylim(new_ylim)
-            cbar.norm.vmin = cbar_norm.vmin + (new_ylim[0] - ylim[0])
-            cbar.norm.vmax = cbar_norm.vmax + (new_ylim[1] - ylim[1])
-            fig.canvas.draw_idle()
+                image.set_clim(fig.default_clim[0])
+                image.norm.vmin = fig.default_clim[1]
+                image.norm.vmax = fig.default_clim[2]
+            elif key in '1234567890':
+                cmaps = {'1':'viridis', '2':'RdBu_r', 
+                         '3':'inferno', '4':'cividis',
+                         '5':'PiYG', '6':'seismic', 
+                         '7':'Blues', '8':'Purples', '9':'Greens'}
+                if key == '0': 
+                    cmap = np.random.choice(plt.colormaps())
+                else:
+                    cmap = cmaps[key]
+                image.set_cmap(cmap)
+            
+        elif key in 'jkJK' and fig.mode == 'traces':
+            fig.traces_position += {'j':-1, 'k':+1, 'J':-20, 'K':+20}[key]
+            if fig.traces_position < 0: fig.traces_position = 0
+            update_trace_line()
+        
+        elif key in 'r' and fig.mode == 'traces':
+            fig.traces_orientation = {'vertical':'horizontal', 'horizontal':'vertical'}[fig.traces_orientation]
+            update_trace_line()
 
-    if hasattr(fig, 'cbar'):
-        fig.cbar.default_lim = fig.cbar.ax.get_ylim()
-    
-    fig.keyPress_dim = on_key
+        elif key in 'g' and fig.mode == 'traces':
+            fig.traces_position = 0
+            update_trace_line()
+        
+        elif key in 'G' and fig.mode == 'traces':
+            fig.traces_position = np.inf
+            update_trace_line()
+        
+        elif key in 'p' and fig.mode == 'traces':
+            fig.traces_plot[0].show()
+            plotTrace()
+
     fig.canvas.mpl_connect('key_press_event', on_key)
-    
-    return fig
 
+    
 #### SPECIAL CASE PLOTS
 
 def plotColumns(array, interval, x_axis=None, y_axis=None, x_label='', y_label='', title='', 
@@ -1086,82 +1413,3 @@ def plotSideBySide(*args, inline=False, link_all=False):
          w.show()
          
     return w
-
-class Cursor:
-    """
-    A cross hair cursor.
-    """
-    def __init__(self, fig, ax):
-        self.ax = ax
-        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
-        self.vertical_line = ax.axvline(color='k', lw=0.8, ls='--')
-        # text location in axes coordinates
-        self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
-
-        fig.snapping_cursor = self
-        fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
-
-    def set_cross_hair_visible(self, visible):
-        need_redraw = self.horizontal_line.get_visible() != visible
-        self.horizontal_line.set_visible(visible)
-        self.vertical_line.set_visible(visible)
-        self.text.set_visible(visible)
-        return need_redraw
-
-    def on_mouse_move(self, event):
-        if not event.inaxes:
-            need_redraw = self.set_cross_hair_visible(False)
-            if need_redraw:
-                self.ax.figure.canvas.draw()
-        else:
-            self.set_cross_hair_visible(True)
-            x, y = event.xdata, event.ydata
-            # update the line positions
-            self.horizontal_line.set_ydata([y])
-            self.vertical_line.set_xdata([x])
-            self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
-            self.ax.figure.canvas.draw()
-
-class SnappingCursor:
-    """
-    A cross-hair cursor that snaps to the data point of a line, which is
-    closest to the *x* position of the cursor.
-
-    For simplicity, this assumes that *x* values of the data are sorted.
-    """
-    def __init__(self, fig, ax, line):
-        self.ax = ax
-        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
-        self.vertical_line = ax.axvline(color='k', lw=0.8, ls='--')
-        self.x, self.y = line.get_data()
-        self._last_index = None
-        # text location in axes coords
-        self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
-
-    def set_cross_hair_visible(self, visible):
-        need_redraw = self.horizontal_line.get_visible() != visible
-        self.horizontal_line.set_visible(visible)
-        self.vertical_line.set_visible(visible)
-        self.text.set_visible(visible)
-        return need_redraw
-
-    def on_mouse_move(self, event):
-        if not event.inaxes:
-            self._last_index = None
-            need_redraw = self.set_cross_hair_visible(False)
-            if need_redraw:
-                self.ax.figure.canvas.draw()
-        else:
-            self.set_cross_hair_visible(True)
-            x, y = event.xdata, event.ydata
-            index = min(np.searchsorted(self.x, x), len(self.x) - 1)
-            if index == self._last_index:
-                return  # still on the same data point. Nothing to do.
-            self._last_index = index
-            x = self.x[index]
-            y = self.y[index]
-            # update the line positions
-            self.horizontal_line.set_ydata([y])
-            self.vertical_line.set_xdata([x])
-            self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
-            self.ax.figure.canvas.draw()

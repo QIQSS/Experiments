@@ -99,8 +99,12 @@ def gaussian(arr, sigma=20, **kwargs):
  
 def gaussianlbl(image, sigma=20, **kwargs):
     """ gaussian line by line """
+    if sigma == 0: return image
     return ndimage.gaussian_filter1d(image, sigma, axis=1, **kwargs)
 
+def gaussian2d(image, sigma=20, **kwargs):
+    if sigma == 0: return image
+    return ndimage.gaussian_filter(image, sigma, **kwargs)
 
 #### compute things
 

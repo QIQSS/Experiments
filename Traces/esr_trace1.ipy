@@ -252,7 +252,7 @@ up.modFig1d(fig, ax)
 ax.set_xlabel('frequence (GHz)')
 ax.set_ylabel('$P_{flip} (\%)$')
 ax.grid()
-fig.show()
+#fig.show()
 #uu.mplqt(fig)
 
 # %% rabi
