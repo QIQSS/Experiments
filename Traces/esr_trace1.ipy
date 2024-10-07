@@ -183,6 +183,8 @@ b2_45m_2 = do_analysis('b2_45m_2', alg='blockade', force=0, save=True, t_acq=0.0
 b2_45m_3 = do_analysis('b2_45m_3', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
 b2_45m_4 = do_analysis('b2_45m_4', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[101, ])
 b2_45m_5 = do_analysis('b2_45m_5', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[])
+# %%
+_31r31r_large1 = do_analysis('31r31r_large1', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[])
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
 

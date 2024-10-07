@@ -92,9 +92,7 @@ tbefore = 0.02
 adb_ramp_time = 0.005
 
 # vm
-#read_level = {'P1': 1.086, 'P2': 0.598}
-#read_level = {'P1': 1.0895, 'P2': 0.600}
-read_level = {'P1': 1.2380, 'P2': 0.853}
+read_level = {'P1': 1.245, 'P2': 0.86250}
 filt = 2 # gaussian filter
 
 ##############
@@ -159,7 +157,7 @@ ui.awgBTrigMode(awg)
 send(pulseP1, 1)
 send(pulseP2, 2)
 send(pulseSR, 3, run_after=True)
-
+ 
 rhP1.ramp.set(read_level['P1'])
 rhP2.ramp.set(read_level['P2'])
 
@@ -169,7 +167,6 @@ sweep = SweepAxis(
 
 def vmget():
     sweep.next()
-    #wait(0.2)
     data = acquire(acq_time)
     data = ua.gaussian(data, filt) if filt else data
     return data
@@ -259,10 +256,99 @@ points += [(1, read_level['P1'],read_level['P2'])]
 imshow('D:/QBB16_SD11b_3/Hlab/20241007/20241007-080817-transition_psb', scatter_points=points)
 genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
 
+
+# %% pulse  31 - read - 31 - read
+##### settings
+#   (P1  ,  P2)
+detuning_slope = -1/30
+
+p1_read = 0.020
+p1_31 = 0
+
+_read = (p1_read , p1_read*detuning_slope)
+_31 = (p1_31, p1_31*detuning_slope )
+
+t31 = 0.001
+tramp = 0.0001
+tread1 = 0.005
+tread2 = 0.005
+tdrive = 0.000_2
+
+tbefore = 0.05
+
+# vm
+read_level = {'P1': 1.239, 'P2': 0.8650}
+filt = 2 # gaussian filter
+
+##############
+
+pulseP1 = Pulse(name='P1', shape_comp=True)
+
+pulseP1.add(tbefore)
+pulseP1.add(t31, offset=_31[0], mark=True)
+
+
+pulseP1.addRamp(tramp, _31[0], _read[0], mark=True)
+pulseP1.add(tread1, offset=_read[0], mark=True)
+
+pulseP1.addRamp(tramp, _read[0], _31[0], mark=True)
+
+pulseP1.add(t31, offset=_31[0], mark=True)
+
+pulseP1.addRamp(tramp, _31[0], _read[0],mark=True)
+pulseP1.add(tread2, offset=_read[0], mark=True)
+
+pulseP1.addCompensationZeroMean(value=-0.003)
+
+
+pulseP2 = Pulse(name='P2', shape_comp=True)
+pulseP2.add(tbefore)
+pulseP2.add(t31, offset=_31[1], mark=False)
+
+pulseP2.addRamp(tramp, _31[1], _read[1],mark=False)
+pulseP2.add(tread1, offset=_read[1], mark=False)
+
+pulseP2.addRamp(tramp, _read[1], _31[1] ,mark=False)
+
+pulseP2.add(t31/2-(tdrive/2), offset=_31[1], mark=False)
+pulseP2.add(tdrive, offset=_31[1], mark=True)
+pulseP2.add(t31/2-(tdrive/2), offset=_31[1], mark=False)
+
+pulseP2.addRamp(tramp, _31[1], _read[1])
+pulseP2.add(tread2, offset=_read[1])
+
+
+
+pulseSR = Pulse(name='SR', shape_comp=False)
+pulseSR.add(tbefore)
+pulseSR.add(t31)
+
+pulseSR.add(tramp)
+pulseSR.add(tread1)
+
+pulseSR.add(tramp)
+
+pulseSR.add(t31/2-tdrive/2)
+pulseSR.addRamp(tdrive, -.75/gain, +.75/gain, mark=True)
+pulseSR.add(t31/2-tdrive/2)
+
+pulseSR.addRamp(tramp, _31[1], _read[1])
+pulseSR.add(tread2, offset=_read[1])
+
+#pulseP2.plot(pulseP1)
+equalizeTime(pulseP1, pulseP2)
+equalizeTime(pulseP1, pulseSR)
+
+pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
+points = [(0, x+read_level['P1'],y+read_level['P2']) for x,y in [_read, _31]]
+points += [(1, read_level['P1'],read_level['P2'])]
+imshow('D:/QBB16_SD11b_3/Hlab/20241007/20241007-125823-transition_psb', scatter_points=points)
+genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
+
 # %% pulse multi sequence
 nb_pulse = 600
 ui.awgContMode(awg)
-ats.sample_rate.set(20_000)
+ats.sample_rate.set(50_000)
 ats.nbwindows.set(nb_pulse)
 ats.ConfigureBoard()
 ####
@@ -290,18 +376,18 @@ def get(nb=1):
 # 48 000 traces par heure
 
 #timelist = np.linspace(0.1e-6, 20.0e-6, 200)
-freqs = ua.arange(15.8e9, 17.2e9, 2e6); print(len(freqs))
+freqs = ua.arange(15.8e9, 17.2e9, 16e6); print(len(freqs))
 #freqs = np.linspace(16.470e9, 16.51e9, 11); print(len(freqs))
 
 points = freqs
 
 
-name = '4031_large2'
+name = '31r31r_large1'
 nb_get = 1
-ampl = 0
+ampl = -10
 champs = 0.589
-tdrive = 0.000_3
-chirp = 8e6
+tdrive = 0.000_2
+chirp = 32e6
 description = """"""
 
 
