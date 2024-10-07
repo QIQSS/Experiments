@@ -405,7 +405,7 @@ def _modFig(fig, ax):
         k = event.key
         
         mode_keys = {
-                     'm':'ode: normal, cbar, legend, markers, traces',
+                     'm':'ode: normal, cbar, legend, traces',
                      'q':'uit?', 
                      'z':'oom: in, out, reset', 
                      'zr':'eset: x, y, both',
@@ -447,7 +447,7 @@ def _modFig(fig, ax):
                 return 'break'
             
         elif fig.key_mode == 'm':
-            modes = {'l':'legend', 'c':'colorbar', 'n': 'normal', 'm':'markers', 't':'traces'}
+            modes = {'l':'legend', 'c':'colorbar', 'n': 'normal', 't':'traces'}
             if k in modes.keys():
                 changeMode(modes[k])
 
@@ -885,7 +885,7 @@ def histogram_window(fig, ax):
     fig.onModeChange_functions['histogram'] = on_change
 
 def markers(fig, ax):
-        
+    # DEPRECATED
     fig.markers_position = list(fig.default_lims[0]) + list(fig.default_lims[1]) # v1, v2, h1, h2
     fig.markers_selected = 0    
 
@@ -1003,7 +1003,7 @@ def modFig1d(fig, ax):
     legend_lines_toggle(fig, ax)
     sigma_filter(fig, ax)
     histogram_window(fig, ax)
-    markers(fig, ax)
+    #markers(fig, ax)
     
 def modFig2d(fig, ax):
     fig = _modFig(fig, ax)
@@ -1199,7 +1199,7 @@ def modFig2d(fig, ax):
             figH.show()
             
         elif not boo:
-            if close:
+            if close and fig.histogram_ever_open:
                 figH.canvas.window().hide()
                 plt.close(figH)
         
