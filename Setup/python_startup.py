@@ -43,3 +43,13 @@ try:
     notify = Notify(endpoint="https://notify.run/WvLaaa2BYb9iSBM3tM5R")
 except ImportError:
     pass
+
+# Detect OS
+def currentOS():
+    os_name = platform.system().lower()
+    if 'windows' in os_name:
+        return 'windows'
+    elif 'linux' in os_name:
+        return 'linux'
+    else:
+        return 'unknown'  # In case it's not Linux or Windows

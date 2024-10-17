@@ -33,6 +33,11 @@ def alternate(arr, enable=True):
     ret[1::2, :] = ret[1::2, ::-1]
     return ret
 
+def deinterlace(img):
+    img1 = img[0::2, :]
+    img2 = img[1::2, :]
+    return img1, img2
+
 def flip(arr, axis=-1, enable=True):
     """ returns a copied flipped array allong axis """
     if not enable: return arr
@@ -225,7 +230,7 @@ def classTraces(arr2d, timelist, blip_tolerance=0):
          'high_fall_time':[]}
     
     for i, trace in enumerate(arr2d):
-        trace = cleanTrace(trace, blip_tolerance)
+        trace = removeSmallEvents(trace, blip_tolerance)
         
         if not np.any(trace): # 0000000
             d['low'] += 1
