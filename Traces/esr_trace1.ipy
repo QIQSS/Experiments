@@ -28,6 +28,7 @@ import matplotlib
 
 def do_analysis(measure_name, x_lbl='freq', 
                 t_acq=0.065, t_read1=[0.02, 0.04], t_read2=[0.045, 0.064],
+                threshold=None,
                 skip=[], force=False, save=False, alg='flip', tolerance=10):
     """ 
     find the files then run blockade_probability() for each.
@@ -67,14 +68,16 @@ def do_analysis(measure_name, x_lbl='freq',
 
         read1 = npz.array[:,slice_read1]
         read2 = npz.array[:,slice_read2]
+        #imshow(read1)
+        #imshow(read2)
         
         #clas_read1 = ua.autoClassify(read1, prominence_factor=0.04, verbose=0)
         #clas_read1_ = np.apply_along_axis(ua.removeSmallEvents, arr=clas_read1, axis=1, tolerance=5)
         
         if alg != 'flip':
-            p_blockade, nb_singlet, nb_triplet = ua.blockade_probability(read1, read2, tolerance)
+            p_blockade, nb_singlet, nb_triplet = ua.blockade_probability(read1, read2, threshold=threshold, tolerance=tolerance)
         else:
-            p_blockade, nb_singlet, nb_triplet = ua.flip_probability(read1, read2, tolerance)
+            p_blockade, nb_singlet, nb_triplet = ua.flip_probability(read1, read2, threshold=threshold, tolerance=tolerance)
         res.append([npz.rget(x_lbl), p_blockade, nb_singlet, nb_triplet])
 
     res = np.array(res)
@@ -183,17 +186,37 @@ b2_45m_4 = do_analysis('b2_45m_4', alg='blockade', force=0, save=True, t_acq=0.0
 b2_45m_5 = do_analysis('b2_45m_5', alg='blockade', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10, skip=[])
 # %%
 _31r31r_large1 = do_analysis('31r31r_large1', alg='blockade', force=0, save=True, t_acq=0.0128, t_read1=[0.002, 0.006], t_read2=[0.00725, 0.012], tolerance=10, skip=[])
+
+_31r31r_large2 = do_analysis('31r31r_large2', alg='flip', force=1, save=True, t_acq=0.0128, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.010], tolerance=10, skip=[])
+
+
+_31r31r_soir = do_analysis('31r31r_soir', alg='blockade', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, skip=[])
+_31r31r_nuit = do_analysis('31r31r_nuit', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, threshold=-37.5, skip=[])
+_31r31r_champs2 = do_analysis('31r31r_champs2', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, threshold=-33, skip=[])
+_31r31r_zoom1 = do_analysis('31r31r_zoom1', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=-34, skip=[])
+_31r31r_zoom2 = do_analysis('31r31r_zoom2', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=-34.5, skip=[])
+
+
+_31r31r_nuit2 = do_analysis('31r31r_nuit2', alg='blockade', force=1, save=True, t_acq=0.0384, t_read1=[0.010, 0.020], t_read2=[0.030, 0.037], tolerance=50, threshold=None, skip=[])
+
+
 # %% plot
 fig, ax = plt.subplots(figsize=(16,4))
 
 to_plot = [ 
-            b2_45m_1,
-            b2_45m_2,
-            b2_45m_3,
-            b2_45m_4,
-            b2_45m_5,
-            _31r31r_large1,
-
+            # b2_45m_1,
+            # b2_45m_2,
+            # b2_45m_3,
+            # b2_45m_4,
+            # b2_45m_5,
+            # _31r31r_large1,
+            _31r31r_large2,
+            _31r31r_soir,
+            _31r31r_nuit,
+            _31r31r_champs2,
+            _31r31r_zoom1,
+            _31r31r_zoom2,
+            _31r31r_nuit2,
     # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
             # b600m_z2,
@@ -259,7 +282,7 @@ ax.grid()
 # %% rabi
 
 b2_45m_rabi = do_analysis('b2_45m_rabi', alg='blockade', x_lbl='tdrive', force=0, save=True, t_acq=0.075, t_read1=[0.031, 0.0485], t_read2=[0.0625, 0.0735], tolerance=10)
-# %% plot
+# %% plot rabi
 
 fig, ax = plt.subplots(figsize=(16,4))
     
@@ -282,6 +305,37 @@ to_plot = [b2_45m_rabi,
 
 up.modFig1d(fig, ax)
 ax.set_xlabel('$t_{drive}\ (\mu s)$')
+ax.set_ylabel('$P_{flip}\ (\%)$')
+ax.grid()
+fig.show()
+#uu.mplqt(fig)
+
+
+
+
+# %% plot power
+#_31r31r_power0 = do_analysis('31r31r_power0', alg='flip', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=None, skip=[], x_lbl='power')
+#_31r31r_power1 = do_analysis('31r31r_power1', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=None, skip=[], x_lbl='power')
+
+fig, ax = plt.subplots(figsize=(16,4))
+    
+def plot_power(ax, meas_npz, color=0):
+    array = meas_npz.array
+    sorted_indices = np.argsort(array[:, 0])
+    sorted_array = array[sorted_indices]
+    
+    md = uu.customDict(meas_npz.metadata)
+    lbl = f"freq {md.freq*1e-9}Ghz"
+    ax.plot(sorted_array[::,0]*1e6, sorted_array[::,1]*100, label=lbl, marker='o', linestyle='--', color=up.COLORS[color])
+
+
+to_plot = [_31r31r_power1,
+           
+           ]
+[plot_power(ax, line, i) for i, line in enumerate(to_plot)]
+
+up.modFig1d(fig, ax)
+ax.set_xlabel('$power\ dBm$')
 ax.set_ylabel('$P_{flip}\ (\%)$')
 ax.grid()
 fig.show()

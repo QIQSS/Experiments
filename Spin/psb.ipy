@@ -71,8 +71,8 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 1.25, 0.04, 0.020
-valueStep, deltaStep, nbStep = 0.86, 0.010, 101
+valueRamp, deltaRamp, timeRamp = 1.20, 0.045, 0.02
+valueStep, deltaStep, nbStep = 0.932, 0.020, 101
 
 
 sync_time_after_ramp = 0.01

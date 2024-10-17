@@ -217,6 +217,41 @@ def removeSmallEvents(trace, tolerance, verbose=False, show_plot=False):
         
     return np.array(cleaned_trace)
 
+
+def remove_small_blips_2d(boolean_array, tolerance):
+    #cgpt
+    # Initialize an array to store the results
+    filtered_array = np.zeros_like(boolean_array, dtype=bool)
+
+    for i in range(boolean_array.shape[0]):  # Iterate over each row
+        row = boolean_array[i]
+        
+        # Identify where the transitions occur
+        transitions = np.diff(row.astype(int))
+        
+        # Find the indices of the transitions
+        change_indices = np.where(transitions != 0)[0] + 1
+        
+        # If there are no transitions or only one type of value, retain the row as is
+        if len(change_indices) == 0 or (row[0] == row[-1]):
+            filtered_array[i] = row
+            continue
+
+        # Get the start and end indices of segments
+        segment_indices = np.concatenate(([0], change_indices, [len(row)]))
+        segments = [row[segment_indices[j]:segment_indices[j + 1]] for j in range(len(segment_indices) - 1)]
+        
+        # Filter segments based on tolerance
+        filtered_segments = [seg for seg in segments if len(seg) >= tolerance]
+
+        # Fill the new array with the retained segments
+        for j, seg in enumerate(segments):
+            if len(seg) >= tolerance:
+                filtered_array[i][segment_indices[j]:segment_indices[j + 1]] = seg
+
+    return filtered_array
+
+
 def classTraces(arr2d, timelist, blip_tolerance=0):
     """ wip
     timelist same size as arr2d.shape[1]
@@ -290,43 +325,54 @@ def findPeaks(points, show_plot=False,
         plt.show()
     return peaks, properties
 
-def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.03, verbose=0):
+def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.03, verbose=0, on_fail=False):
     """ automated histogram, peaks analysis, gaussian fit then classify """
     array = gaussianlbl(array, sigma=filter_sigma)
     bins, hist = histogram(array, return_type='all')
+    hist = gaussian(hist, 1)
     peaks, prop = findPeaks(hist, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
 
     if len(peaks) < 1:
-        return False
-    if len(peaks) > 2 and len(peaks) < 10:
+        return on_fail
+    if len(peaks) > 2 and len(peaks) < 10 and filter_sigma < 20:
         print("More than 2 peaks found, trying with a sigma = 2*sigma")
         print(filter_sigma)
-        return autoClassify(array, filter_sigma*2, width_tolerance, prominence_factor, verbose)
-    elif len(peaks)>=10:
+        return autoClassify(array, filter_sigma+1, width_tolerance, prominence_factor+0.01, verbose)
+    elif len(peaks) == 2:
+        pass
+    else:
         print(f"{uu.fname()}: nb peaks != 2, can't classify")
-        
-        return False
+        return on_fail
 
     p0 = [0.4, 0.4, bins[peaks[0]], bins[peaks[1]], hist[peaks[0]], hist[peaks[1]]]
     dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
     th = findClassifyingThreshold(dg_params, 'min')
 
     clas = classify(array, th)
+    return clas
     #up.imshow(clas)
-    clas_clean = np.apply_along_axis(removeSmallEvents, arr=clas, axis=1, tolerance=width_tolerance)
+    clas_clean = np.remove_small_blips_2d(clas, tolerance=width_tolerance)
     #up.imshow(clas_clean-clas)
     
-    return clas
+    return clas_clean
 
-def blockade_probability(read1, read2, tolerance=20):
+def blockade_probability(read1, read2, threshold=None, tolerance=20):
     """ take read1 and read2 maps.
     exclude from read2 all the traces that are singlet in read1
     count the number of singlet / triplet in read2
     returns the blockade probability
     """
-    read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
-    read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
-    
+    if threshold is None:
+        read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        if isinstance(read1clas, bool) or isinstance(read2clas, bool):
+            return np.nan, 0, 0
+    else:
+        read1clas_ = classify(read1, threshold)
+        read2clas_ = classify(read2, threshold)
+        
+        read1clas = np.apply_along_axis(removeSmallEvents, arr=read1clas_, axis=1, tolerance=tolerance)
+        read2clas = np.apply_along_axis(removeSmallEvents, arr=read2clas_, axis=1, tolerance=tolerance)
 
     ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
     
@@ -342,15 +388,24 @@ def blockade_probability(read1, read2, tolerance=20):
 
     return p_blockade, nb_singlet, nb_triplet
 
-def flip_probability(read1, read2, tolerance=20):
+def flip_probability(read1, read2, threshold=None, tolerance=20):
     """ take read1 and read2 maps.
     class from read1 all singlets and all triplets
     count the number of flips
     returns the flip probability
     """
-    read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
-    read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
-
+    if threshold is None:
+        read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        if isinstance(read1clas, bool) or isinstance(read2clas, bool):
+            return np.nan, 0, 0
+    else:
+        read1clas_ = classify(read1, threshold)
+        read2clas_ = classify(read2, threshold)
+        
+        read1clas = np.apply_along_axis(removeSmallEvents, arr=read1clas_, axis=1, tolerance=tolerance)
+        read2clas = np.apply_along_axis(removeSmallEvents, arr=read2clas_, axis=1, tolerance=tolerance)
+        
     ids_T_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
     ids_S_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 1)]
     
