@@ -235,10 +235,10 @@ def showfile2dim(data, x_label='', y_label='', title='', cbar=False,
     if deinterlace:
         img1 = img.T[0::2, :].T
         img2 = img.T[1::2, :].T
-        p.imshow(img1, **imshow_kw)
-        p.imshow(img2, **imshow_kw)
-        return        
-    p.imshow(img, **imshow_kw)
+        f1 = p.imshow(img1, **imshow_kw)
+        f2 = p.imshow(img2, **imshow_kw)
+        return f1, f2        
+    return p.imshow(img, **imshow_kw)
 
 def read2fileAndPlotDiff(file1, file2, filtre=lambda arr: arr):
     """ for 1 dimensional sweep, assuming the swept values are the same. """

@@ -50,7 +50,7 @@ def _imshow_make_kwargs(
         array,
         show=True,
            
-           save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
+           save=False, save_fig=False, save_png=False, path='./', filename='', metadata={}, show_filename=False,
            
            x_axis=None, y_axis=None, x_label='', y_label='',
            x_axis2=None, x_label2='', y_axis2=None, y_label2='',
@@ -266,8 +266,10 @@ def imshow(array, **kwargs):
         metadata = kw.pop('metadata')
         metadata['imshow_kwargs'] = called_kwargs
         path, filename, save_fig, save_png = kw['path'], kw['filename'], kw['save_fig'], kw['save_png']
+        
         #print(path, filename, metadata)
         _saveDataAndFig(path, filename, array, fig, metadata, save_fig, save_png)
+    
         
     if kw['text']:
         _writeText(ax, kw['text'], text_pos=kw['text_pos'], text_color=kw['text_color'])
@@ -310,7 +312,7 @@ def _sliceAxis(axis, nbpts, slice_, slice_by_val=False):
         find the slices index closest to slice_[0] and slice_[1]
         return the axis and the indexes
     """
-    full_axis = axis
+    full_axis = uu.ensureList(axis)
     if None in full_axis: # => axis not in use
         return full_axis, slice_
     if len(full_axis) == 2:
@@ -1088,8 +1090,8 @@ def modFig2d(fig, ax):
             max_marker.set_data(id_to_xpos(max_idx), pos_value)
 
             
-        min_value = round(np.nanmin(trace), 4)
-        max_value = round(np.nanmax(trace), 4)
+        min_value = round(float(np.nanmin(trace)), 4)
+        max_value = round(float(np.nanmax(trace)), 4)
         pos_value = round(pos_value, 4)
         fig.mode_comment['traces'] = f"{fig.traces_orientation[0]}{fig.traces_position}: {pos_value} " \
                               f"<span style='color: red;'>min</span>{min_idx}: {min_value}, " \
