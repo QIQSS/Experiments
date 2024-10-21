@@ -3,6 +3,7 @@ import os
 import scipy
 from scipy import ndimage
 from scipy.fft import fftfreq, fftshift
+from scipy.fftpack import fft, ifft
 from scipy.optimize import minimize_scalar
 
 from pyHegel import fitting, fit_functions
@@ -91,11 +92,48 @@ def multiget(arr, list_of_indexes):
 
 #### filters
 
-def fft(arr):
-    """ returns a list of frequence and vals """
-    vals = fftshift(scipy.fft.fft(arr))
-    freq = fftshift(fftfreq(len(arr)))
-    return freq, vals
+# def fft(arr):
+#     """ returns a list of frequence and vals """
+#     vals = fftshift(scipy.fft.fft(arr))
+#     freq = fftshift(fftfreq(len(arr)))
+#     return freq, vals
+
+def filter_frequencies(y, x, filter_freqs,
+                       show_plot=False):
+    """
+    Filter specified frequencies from a 1D signal using FFT.
+    
+    Parameters:
+    - y: 1D array of the signal to be filtered.
+    - x: 1D array representing the axis
+    - filter_freqs: List of frequencies to filter out from the signal.
+    """
+    fft_y = fft(y)
+
+    sampling_interval = x[1] - x[0]
+    frequencies = np.fft.fftfreq(len(y), d=sampling_interval)
+
+    for ff in filter_freqs:
+        idx_positive = np.abs(frequencies - ff).argmin()
+        idx_negative = np.abs(frequencies + ff).argmin()
+        fft_y[idx_positive] = 0
+        fft_y[idx_negative] = 0
+
+    # Perform IFFT to get the filtered signal
+    filtered_y = ifft(fft_y)
+
+    if show_plot:
+        plt.figure(figsize=(10, 6))
+        plt.subplot(2, 1, 1)
+        plt.plot(x, y, label="Original Signal")
+        plt.title("Original Signal")
+        plt.subplot(2, 1, 2)
+        plt.plot(x, filtered_y.real, label="Filtered Signal", color='orange')
+        plt.title(f"Filtered Signal (Frequencies {filter_freqs} units removed)")
+        plt.tight_layout()
+        plt.show()
+    
+    return filtered_y
 
 def gaussian(arr, sigma=20, **kwargs):
     """ returns a copied array with gaussian filter """
@@ -105,12 +143,29 @@ def gaussian(arr, sigma=20, **kwargs):
 def gaussianlbl(image, sigma=20, **kwargs):
     """ gaussian line by line """
     if sigma == 0: return image
+    if image.ndim == 1:
+        return ndimage.gaussian_filter1d(image, sigma, **kwargs)
     return ndimage.gaussian_filter1d(image, sigma, axis=1, **kwargs)
 
 def gaussian2d(image, sigma=20, **kwargs):
     if sigma == 0: return image
     return ndimage.gaussian_filter(image, sigma, **kwargs)
 
+def lfilter(trace, n):
+    from scipy.signal import lfilter
+    n = 5  # the larger n is, the smoother curve will be
+    b = [1.0 / n] * n
+    a = 1
+    yy = lfilter(b, a, trace)
+    return yy
+    
+def derivative2d(array, axis='xy'):
+    # Calculate the derivatives along the x (columns) and y (rows) axes
+    if 'x' in axis:
+        return np.diff(array, axis=1)  # Derivative along the x-axis
+    if 'y' in axis:
+        return np.diff(array, axis=0)  # Derivative along the y-axis
+    
 #### compute things
 
 def findNearest(array, value, 
@@ -121,6 +176,11 @@ def findNearest(array, value,
     idx = (np.abs(array - value)).argmin()
     if return_type=='id': return idx
     return array[idx]
+
+def getValue(x_array, y_array, x_to_find):
+    # Interpolate to find the y value of `y_array` at `x_to_find`
+    y_interpolated = np.interp(x_to_find, x_array, y_array)
+    return y_interpolated
 
 
 def rSquared(y_true, y_pred):
@@ -178,123 +238,126 @@ def countHighLow(arr1d, high=1, low=0):
     l_prop = l_count / arr1d.size
     return dict(high=h_prop, low=l_prop, high_count=h_count, low_count=l_count)
 
-def removeSmallEvents(trace, tolerance, verbose=False, show_plot=False):
-    """ repllace event with less points than tolerance 
-    by zeros (ones) if event is ones (zeros).
-    trace is a 1d array with only zeros and ones.
+def removeSmallSegments_lbl(boolean_array, tolerance, skip_first_seg=False):
+    """Remove small segments from a boolean array (supports both 1D and 2D arrays)
+       and repeat until no more small segments (blips) exist, without modifying the input in place."""
+    
+    # Create a copy of the input array to avoid in-place modification
+    processed_array = boolean_array.copy()
+
+    # Define a helper function to remove small segments from a single line (1D)
+    def process_line(line):
+        # Work with a copy of the line to avoid in-place changes
+        line_copy = line.copy()
+
+        while True:
+            # Make a copy of the line to track changes
+            prev_line = line_copy.copy()
+
+            # Identify where the transitions occur (changes between 0 and 1)
+            transitions = np.diff(line_copy.astype(int))
+
+            # Find the indices of the transitions
+            change_indices = np.where(transitions != 0)[0] + 1
+
+            # If there are no transitions or only one type of value, return the line as is
+            if len(change_indices) == 0:
+                return line_copy
+
+            # Get the start and end indices of segments
+            segment_indices = np.concatenate(([0], change_indices, [len(line_copy)]))
+
+            # Filter out segments smaller than tolerance
+            for j in range(len(segment_indices) - 1):
+                start, end = segment_indices[j], segment_indices[j + 1]
+                if start == 0 and skip_first_seg: continue
+                segment = line_copy[start:end]
+                if len(segment) < tolerance:
+                    # Determine the value to replace with
+                    if start > 0:
+                        replacement_value = line_copy[start - 1]  # Use the value before the segment
+                    elif end < len(line_copy):
+                        replacement_value = line_copy[end]  # Use the value after the segment
+                    else:
+                        replacement_value = line_copy[0]  # Fallback for edge case (1st element)
+
+                    # Replace the small segment with the chosen value
+                    line_copy[start:end] = replacement_value
+
+            # If no further changes occurred, stop the loop
+            if np.array_equal(line_copy, prev_line):
+                break
+
+        return line_copy
+
+    # Check if the array is 1D
+    if processed_array.ndim == 1:
+        return process_line(processed_array)
+    
+    # If it's 2D, iterate over each row and process each row without modifying the input array
+    for i in range(processed_array.shape[0]):  # Iterate over each row
+        processed_array[i] = process_line(processed_array[i])
+
+    return processed_array
+
+def classTracesT1(arr2d, timelist, low_val=0, blip_tolerance=0):
     """
+    low_val 0 or 1
+    Classifies binary traces from a 2D array based on whether they are always low (low_val),
+    always high (1), or transition from high to low at a specific time. Traces that 
+    don't fit these categories are excluded.
 
-    event_indexes = np.where(np.diff(trace) != 0)[0]+1
-    event_indexes = np.concatenate(([0], event_indexes, [len(trace)]))
-
-    event_lengths = np.diff(event_indexes)
-    valid_events = event_lengths >= tolerance
+    Parameters:
+    - arr2d (2D numpy array): Each row is a binary trace (1s and low_val).
+    - timelist (list): A list of time points corresponding to the columns of arr2d.
+    - low_val (int): The value that represents the 'low' state (either 0 or 1).
+    - blip_tolerance (int): Minimum segment length tolerance to remove small segments (blips).
     
-    
-    cleaned_trace = np.copy(trace)
-    
-    for start, end, valid in zip(event_indexes[:-1], event_indexes[1:], valid_events):
-        if not valid:
-            cleaned_trace[start:end] = 0 if cleaned_trace[start]==1 else 1
-    
-    if verbose:
-        total_events = len(event_lengths)
-        num_valid_events = np.sum(valid_events)
-        num_removed_events = total_events - num_valid_events
-        print(f"Total events: {total_events}")
-        print(f"Valid events: {num_valid_events}")
-        print(f"Events removed: {num_removed_events}")
-        print(f"Tolerance: {tolerance}")
-       
-    if show_plot:
-        # Plot the original and cleaned traces
-        plt.figure(figsize=(12, 6))
-        plt.subplot(2, 1, 1)
-        plt.plot(trace, label='Original Trace', color='blue')
-        plt.title('Original Trace');plt.xlabel('Index');plt.ylabel('Value')
-        plt.legend()
-        plt.subplot(2, 1, 2)
-        plt.plot(cleaned_trace, label='Cleaned Trace', color='green')
-        plt.title('Cleaned Trace');plt.xlabel('Index');plt.ylabel('Value')
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-        
-    return np.array(cleaned_trace)
-
-
-def remove_small_blips_2d(boolean_array, tolerance):
-    #cgpt
-    # Initialize an array to store the results
-    filtered_array = np.zeros_like(boolean_array, dtype=bool)
-
-    for i in range(boolean_array.shape[0]):  # Iterate over each row
-        row = boolean_array[i]
-        
-        # Identify where the transitions occur
-        transitions = np.diff(row.astype(int))
-        
-        # Find the indices of the transitions
-        change_indices = np.where(transitions != 0)[0] + 1
-        
-        # If there are no transitions or only one type of value, retain the row as is
-        if len(change_indices) == 0 or (row[0] == row[-1]):
-            filtered_array[i] = row
-            continue
-
-        # Get the start and end indices of segments
-        segment_indices = np.concatenate(([0], change_indices, [len(row)]))
-        segments = [row[segment_indices[j]:segment_indices[j + 1]] for j in range(len(segment_indices) - 1)]
-        
-        # Filter segments based on tolerance
-        filtered_segments = [seg for seg in segments if len(seg) >= tolerance]
-
-        # Fill the new array with the retained segments
-        for j, seg in enumerate(segments):
-            if len(seg) >= tolerance:
-                filtered_array[i][segment_indices[j]:segment_indices[j + 1]] = seg
-
-    return filtered_array
-
-
-def classTraces(arr2d, timelist, blip_tolerance=0):
-    """ wip
-    timelist same size as arr2d.shape[1]
+    Returns:
+    - dict: Contains the counts and ids of traces classified as 'low', 'high', or 'exclude',
+            as well as the fall times for high-to-low transitions.
     """
-    d = {'low':0, 'high':0, 'exclude':0, 'low_ids':[], 'high_ids':[], 'exclude_ids':[],
-         'high_fall_time':[]}
+    high_val = 1 if low_val == 0 else 0
+    
+    d = {'low': 0, 'high': 0, 'exclude': 0, 'low_ids': [], 'high_ids': [], 'exclude_ids': [],
+         'high_fall_time': []}
     
     for i, trace in enumerate(arr2d):
-        trace = removeSmallEvents(trace, blip_tolerance)
+        if blip_tolerance != 0:
+            trace = removeSmallSegments_lbl(trace, blip_tolerance)
         
-        if not np.any(trace): # 0000000
+        if np.all(trace == low_val):  # all low
             d['low'] += 1
             d['low_ids'].append(i)
             continue
                     
-        if np.all(trace): # 1111111
+        if np.all(trace == high_val):  # all high
             d['high'] += 1
             d['high_ids'].append(i)
             d['high_fall_time'].append(timelist[-1])
             continue
         
-        event_index = np.where(np.diff(trace) == -1)[0]
-        if len(event_index) == 1:
-            event_index = event_index[0]
-            if allequal(trace[:event_index + 1], 1) and \
-                allequal(trace[event_index + 1:], 0): # all ones then all zeros
-                    
+        event_indexes = np.where(np.diff(trace) != 0)[0]  # find where it falls from 1 to low_val
+        
+        # If exactly one transition
+        if len(event_indexes) == 1:
+            event_index = event_indexes[0]
+            if allequal(trace[:event_index + 1], high_val) and \
+                allequal(trace[event_index + 1:], low_val): 
+                # all hihg before the fall and all low after the fall
                 d['high'] += 1
                 d['high_ids'].append(i)
                 d['high_fall_time'].append(timelist[event_index])
-                continue
+            else:
+                d['exclude'] += 1
+                d['exclude_ids'].append(i)
+            continue
 
-    
-        #if len(event_index) != 1: # more than one event
+        # If zero or more than one event, exclude
         d['exclude'] += 1
         d['exclude_ids'].append(i)
-        continue
-    return d
+    
+    return uu.customDict(d)
 
 def findClassifyingThreshold(double_gaussian_parameters,
                              method: Literal['min', 'mid'] = 'min'):
@@ -315,51 +378,91 @@ def findClassifyingThreshold(double_gaussian_parameters,
 def findPeaks(points, show_plot=False, 
               prominence=1,
               **scipy_kwargs):
-    import scipy
+
     peaks, properties = scipy.signal.find_peaks(points, prominence=prominence, **scipy_kwargs)
     
     if show_plot:
         plt.figure(figsize=(10, 6))
         plt.plot(points)
         plt.plot(peaks, points[peaks], 'rx')
-        plt.vlines(peaks, ymin=0, ymax=max(points), color='r', linestyle='--')
+        plt.vlines(peaks, ymin=np.nanmin(points), ymax=np.nanmax(points), color='r', linestyle='--')
         for peak in peaks:
             plt.text(peak, points[peak], f'({peak}, {points[peak]:.2f})', 
-                     ha='center', va='bottom', color='red', fontsize=9)
+                     ha='center', va='bottom', color='grey', fontsize=9)
         plt.grid()
         plt.show()
     return peaks, properties
 
-def autoClassify(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.03, verbose=0, on_fail=False):
-    """ automated histogram, peaks analysis, gaussian fit then classify """
-    array = gaussianlbl(array, sigma=filter_sigma)
-    bins, hist = histogram(array, return_type='all')
-    hist = gaussian(hist, 1)
-    peaks, prop = findPeaks(hist, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
+def autoClassify(array, filter_sigma=2, prominence_factor=0.03, verbose=0, on_fail_value=0):
+    """Automated histogram, peaks analysis, gaussian fit then classify on a smoothed array.
+    
+    Args:
+        array (numpy array): The input data array to classify.
+        filter_sigma (int, optional): The sigma value for the Gaussian smoothing filter. Defaults to 2.
+        prominence_factor (float, optional): The prominence factor for peak detection. Defaults to 0.03.
+        verbose (int, optional): Verbose level for debug messages. Defaults to 0.
+        on_fail_value (int, optional): The value to return in case of failure. Defaults to 0.
+    
+    Returns:
+        numpy array: The classified array or an array filled with `on_fail_value` if classification fails.
+    """
+    
+    array_smooth = gaussianlbl(array, sigma=filter_sigma)
+    bins, hist = histogram(array_smooth, return_type='all')
+    hist_smooth = gaussian(hist, 1)
+    peaks, prop = findPeaks(hist_smooth, show_plot=verbose>1, prominence=max(hist) * prominence_factor)
 
-    if len(peaks) < 1:
-        return on_fail
-    if len(peaks) > 2 and len(peaks) < 10 and filter_sigma < 20:
-        print("More than 2 peaks found, trying with a sigma = 2*sigma")
-        print(filter_sigma)
-        return autoClassify(array, filter_sigma+1, width_tolerance, prominence_factor+0.01, verbose)
-    elif len(peaks) == 2:
-        pass
-    else:
-        print(f"{uu.fname()}: nb peaks != 2, can't classify")
-        return on_fail
+    # Define the on_fail case here
+    on_fail = np.full_like(array, on_fail_value)
 
+    if len(peaks) == 0:
+        return on_fail  # No peaks found
+    elif len(peaks) > 2 and len(peaks) < 10 and filter_sigma < 20:
+        if verbose:
+            print(f"More than 2 peaks found with sigma={filter_sigma}, retrying with sigma={2 * filter_sigma}")
+        return autoClassify(array, filter_sigma + 1, prominence_factor + 0.01, verbose, on_fail_value)
+    elif len(peaks) != 2:
+        if verbose:
+            print(f"Unexpected number of peaks ({len(peaks)}), can't classify.")
+        return on_fail  # Unexpected number of peaks
+    
+    p0 = [0.4, 0.4, bins[peaks[0]], bins[peaks[1]], hist[peaks[0]], hist[peaks[1]]]
+    # fit the curve with double Gaussian
+    dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose > 1)
+    # Find the threshold for classification
+    th = findClassifyingThreshold(dg_params, 'min')
+    
+    classified = classify(array_smooth, th)
+    
+    return classified
+
+
+def autoClassifyAndRemoveBlips(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.03, verbose=0, on_fail=False):
+    """ automated histogram, peaks analysis, gaussian fit then classify ON RAW ARRAY"""
+    array_smooth = gaussianlbl(array, sigma=filter_sigma)
+    bins, hist = histogram(array_smooth, return_type='all')
+    hist_smooth = gaussian(hist, 1)
+    peaks, prop = findPeaks(hist_smooth, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
+
+    if len(peaks) == 0:
+        return on_fail
+    elif len(peaks) > 2 and len(peaks) < 10 and filter_sigma < 20:
+        if verbose:
+            print(f"More than 2 peaks found with sigma={filter_sigma}, retrying with sigma={2 * filter_sigma}")
+        return autoClassifyAndRemoveBlips(array, filter_sigma + 1, width_tolerance, prominence_factor + 0.01, verbose, on_fail)
+    elif len(peaks) != 2:
+        if verbose:
+            print(f"Unexpected number of peaks ({len(peaks)}), can't classify.")
+        return on_fail
+    
     p0 = [0.4, 0.4, bins[peaks[0]], bins[peaks[1]], hist[peaks[0]], hist[peaks[1]]]
     dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
     th = findClassifyingThreshold(dg_params, 'min')
-
-    clas = classify(array, th)
-    return clas
-    #up.imshow(clas)
-    clas_clean = np.remove_small_blips_2d(clas, tolerance=width_tolerance)
-    #up.imshow(clas_clean-clas)
+    classified = classify(array, th)
+    classified_cleaned = np.remove_small_blips_2d(classified, tolerance=width_tolerance)
     
-    return clas_clean
+    return classified_cleaned
+
 
 def blockade_probability(read1, read2, threshold=None, tolerance=20):
     """ take read1 and read2 maps.
@@ -376,8 +479,8 @@ def blockade_probability(read1, read2, threshold=None, tolerance=20):
         read1clas_ = classify(read1, threshold)
         read2clas_ = classify(read2, threshold)
         
-        read1clas = np.apply_along_axis(removeSmallEvents, arr=read1clas_, axis=1, tolerance=tolerance)
-        read2clas = np.apply_along_axis(removeSmallEvents, arr=read2clas_, axis=1, tolerance=tolerance)
+        read1clas = np.apply_along_axis(removeSmallSegments_lbl, arr=read1clas_, axis=1, tolerance=tolerance)
+        read2clas = np.apply_along_axis(removeSmallSegments_lbl, arr=read2clas_, axis=1, tolerance=tolerance)
 
     ids_triplet_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
     
@@ -408,8 +511,8 @@ def flip_probability(read1, read2, threshold=None, tolerance=20):
         read1clas_ = classify(read1, threshold)
         read2clas_ = classify(read2, threshold)
         
-        read1clas = np.apply_along_axis(removeSmallEvents, arr=read1clas_, axis=1, tolerance=tolerance)
-        read2clas = np.apply_along_axis(removeSmallEvents, arr=read2clas_, axis=1, tolerance=tolerance)
+        read1clas = np.apply_along_axis(removeSmallSegments_lbl, arr=read1clas_, axis=1, tolerance=tolerance)
+        read2clas = np.apply_along_axis(removeSmallSegments_lbl, arr=read2clas_, axis=1, tolerance=tolerance)
         
     ids_T_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 0)]
     ids_S_read1 = [id_ for id_, trace in enumerate(read1clas) if np.all(trace == 1)]
@@ -450,6 +553,9 @@ def f_doubleGaussian(x, sigma1, sigma2, mu1=0., mu2=0., A1=3.5, A2=3.5):
 
 def f_expDecay(x, tau, a=1., c=0.):
     return a*np.exp(-x/tau)+c
+
+def f_expDecay0(x, tau, a=1):
+    return f_expDecay(x, tau, a, 0)
 
 def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
                        verbose=False, show_plot=False,

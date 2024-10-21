@@ -1,0 +1,74 @@
+# %% imports
+import platform
+LS_PATH, LOG_PATH = \
+            {'windows':['C:/Codes/Lab-Scripts', 
+                  '//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/'],
+             'linux':['/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts',
+                  '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/']}\
+            [platform.system().lower()]
+%cd $LS_PATH
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import utils as uu
+
+from Utils.plot import imshow, qplot
+from tqdm import tqdm
+from icecream import ic
+
+from pyHegel import fitting as fit
+import pyHegel.commands as c
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib
+
+# %% map P1 B1
+dict_file = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/113941_B1_P1.txt')
+set_low = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/145605_ST_low_sensitivity.txt')
+p1_low, b1_low = 1.7, 0.3
+set_high = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/145823_ST_high_sensitivity.txt')
+p1_high, b1_high = 2.7, 0.8
+# %%%
+p1_b1 = ua.alternate(dict_file['zurich_UHF.readval.ch0_r'])
+p1, b1 = dict_file['P1.ramp'][0], dict_file['bilt_9._B1'][:,1]
+imshow(p1_b1, x_axis=p1, y_axis=b1, x_label='P1 (V)', y_label='B1 (V)')
+trace1 = p1_b1[25]
+
+# %%%
+#trace = ua.filter_frequencies(trace, p1, [0.2, 0.5, 1], show_plot=False)
+plt.plot(-trace1+np.mean(trace1))
+trace = -trace1
+peaks = ua.findPeaks(trace, prominence=0.0001)
+
+trace = np.diff(trace)
+plt.plot(trace)
+
+# %%% set
+set_vals = set_low['bilt_7._ST']
+low, high = set_low['zurich_UHF.readval.ch0_r'], set_high['zurich_UHF.readval.ch0_r']
+plt.plot(set_vals, low, label='low sensitivity')
+plt.plot(set_vals, high, label='high sensitivity')
+plt.axvline(2.987, color='grey', linestyle='--')
+inters = ua.getValue(set_vals, high, 2.987)
+plt.axhline(inters, color='grey', linestyle='--')
+
+inters_at_low = set_vals[len(low)//2+ua.findNearest(low[len(low)//2:], inters,'id')]
+plt.axvline(inters_at_low, color='grey', linestyle='--')
+#plt.text(3, 0.01, f"{inters_at_low:.5f}")
+
+plt.legend(fontsize='large')
+plt.xlabel('ST (V)')
+
+
+# %% mesure
+p1 = np.linspace(0.3, 3.6, 3301)
+b1 = 0.2*(p1-0.3) + 0.4
+st = 0.0078*(p1-0.3) + 2.987
+bz = np.linspace(0, 5, 51)
+
+plt.figure()
+plt.plot(p1,label='p1')
+plt.plot(b1,label='b1')
+plt.plot(st,label='st')
+plt.legend()

@@ -5,19 +5,14 @@ my ipython startup config
 T = True
 F = False
 
-# ipython:
-from IPython import get_ipython
-if (_ipy := get_ipython()):
-    _ipy.run_line_magic('load_ext', 'autoreload')
-    _ipy.run_line_magic('autoreload', '2')
-    _ipy.run_line_magic('autocall', '1')
-    _ipy.run_line_magic('gui', 'qt')
-else:
-    print('no ipython?')
 
 # Packages:
 import numpy as np
+
+# Matplotlib
+import matplotlib
 from matplotlib import pyplot as plt
+matplotlib.rcParams['figure.dpi'] = 300
 
 # PyHegel:
 try:
@@ -46,6 +41,7 @@ except ImportError:
 
 # Detect OS
 def currentOS():
+    import platform
     os_name = platform.system().lower()
     if 'windows' in os_name:
         return 'windows'
@@ -53,3 +49,16 @@ def currentOS():
         return 'linux'
     else:
         return 'unknown'  # In case it's not Linux or Windows
+
+
+# ipython:
+from IPython import get_ipython
+if (_ipy := get_ipython()):
+    _ipy.run_line_magic('load_ext', 'autoreload')
+    _ipy.run_line_magic('autoreload', '2')
+    _ipy.run_line_magic('autocall', '1')
+    _ipy.run_line_magic('gui', 'qt')
+    mplqt = lambda: _ipy.run_line_magic('matplotlib', 'qt')
+    mplil = lambda: _ipy.run_line_magic('matplotlib', 'inline')
+else:
+    print('no ipython?')
