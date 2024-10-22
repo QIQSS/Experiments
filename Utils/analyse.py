@@ -560,7 +560,8 @@ def f_expDecay0(x, tau, a=1):
 def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
                        verbose=False, show_plot=False,
                        plot_title='',
-                       inspect=False):
+                       inspect=False,
+                       get_errors=False):
     """ do a fit, optimize: y = function(x, *p0)
     can give a list of p0 to try them all. it will take the best one.
     
@@ -569,6 +570,7 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
     error = False
     best_params = None
     best_error = float('inf')
+    fitting_errors = []
     
     p0_list = []
     if len(p0) == 0:
@@ -585,12 +587,15 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
             break
         
         try:
-            params, _  = curve_fit(function, x, y, p0=p0)
+            params, covariance  = curve_fit(function, x, y, p0=p0)
             y_pred = function(x, *params)
             error = rSquared(y, y_pred)
 
             if verbose:
                 print(f"Iteration {i}: Parameters = {params}, Error = {error}")
+            
+            param_errors = np.sqrt(np.diag(covariance))
+            fitting_errors.append(param_errors)
             
             if error < best_error:
                 best_params = params
@@ -623,7 +628,8 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
         plt.title(plot_title)
         plt.legend()
         plt.show()
-        
+    
+    if get_errors: return best_params, fitting_errors
     return best_params
 
 def fitExpDecayLinear(x, y, verbose=False, show_plot=False, text=''):
