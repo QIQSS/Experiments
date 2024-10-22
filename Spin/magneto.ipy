@@ -1,0 +1,136 @@
+# %% imports
+import platform
+LS_PATH, LOG_PATH = \
+            {'windows':['C:/Codes/Lab-Scripts', 
+                  '//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/'],
+             'linux':['/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts',
+                  '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/']}\
+            [platform.system().lower()]
+%cd $LS_PATH
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import utils as uu
+from Utils import measure as um
+
+from Utils.plot import imshow, qplot
+from tqdm import tqdm
+from icecream import ic
+
+from pyHegel import fitting as fit
+import pyHegel.commands as c
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib
+
+# %% map P1 B1
+dict_file = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/113941_B1_P1.txt')
+set_low = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/145605_ST_low_sensitivity.txt')
+p1_low, b1_low = 1.7, 0.3
+set_high = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/145823_ST_high_sensitivity.txt')
+p1_high, b1_high = 2.7, 0.8
+# %%%
+p1_b1 = ua.alternate(dict_file['zurich_UHF.readval.ch0_r'])
+p1, b1 = dict_file['P1.ramp'][0], dict_file['bilt_9._B1'][:,1]
+imshow(p1_b1, x_axis=p1, y_axis=b1, x_label='P1 (V)', y_label='B1 (V)')
+trace1 = p1_b1[25]
+
+# %%%
+#trace = ua.filter_frequencies(trace, p1, [0.2, 0.5, 1], show_plot=False)
+plt.plot(-trace1+np.mean(trace1))
+trace = -trace1
+peaks = ua.findPeaks(trace, prominence=0.0001)
+
+trace = np.diff(trace)
+plt.plot(trace)
+
+# %%% set
+set_vals = set_low['bilt_7._ST']
+low, high = set_low['zurich_UHF.readval.ch0_r'], set_high['zurich_UHF.readval.ch0_r']
+plt.plot(set_vals, low, label='low sensitivity')
+plt.plot(set_vals, high, label='high sensitivity')
+plt.axvline(2.987, color='grey', linestyle='--')
+inters = ua.getValue(set_vals, high, 2.987)
+plt.axhline(inters, color='grey', linestyle='--')
+
+inters_at_low = set_vals[len(low)//2+ua.findNearest(low[len(low)//2:], inters,'id')]
+plt.axvline(inters_at_low, color='grey', linestyle='--')
+#plt.text(3, 0.01, f"{inters_at_low:.5f}")
+
+plt.legend(fontsize='large')
+plt.xlabel('ST (V)')
+
+
+# %% mesure
+p1_vals = np.linspace(0.3, 3.6, 3301)
+b1_vals = 0.2*(p1_vals-0.3) + 0.4
+st_vals = -0.0078*(p1_vals-1.45) + 2.989
+bz_vals = np.linspace(0, 5, 101)
+
+plt.figure()
+plt.plot(p1_vals,label='p1')
+plt.plot(b1_vals,label='b1')
+plt.plot(st_vals,label='st')
+plt.legend()
+
+# %%% instruments
+from pyHegel import instruments
+dmm = instruments.agilent_multi_34410A("USB0::0x2A8D::0x0101::MY57515472::INSTR")
+readval = dmm.readval
+readval = instruments.ScalingDevice(readval, scale_factor=10000000.0, only_val=True, invert_trans=True)
+bilt_9 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=9)
+B1_en = (bilt_9.output_en, {'ch': 2})
+B1 = (bilt_9.ramp, {'ch': 2})
+B1 = instruments.LimitDevice(B1, min=-3.0, max=3.0)
+bilt_7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
+ST_en = (bilt_7.output_en, {'ch': 1})
+ST = (bilt_7.ramp, {'ch': 1})
+ST = instruments.LimitDevice(ST, min=-4.0, max=4.0)
+magnet_z = instruments.AmericanMagnetics_model430("tcpip::192.168.137.214::7180::socket")
+field_z = magnet_z.ramp_field_T
+rhP1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
+P1_en = rhP1.output_en
+P1 = rhP1.ramp
+
+# %%% start
+
+meas = um.Measure(r"D:/QBB16_SD11b_3/Spin/", 'magneto', metadata=dict(p1_vals=p1_vals, b1_vals=b1_vals, st_vals=st_vals, bz_vals=bz_vals))
+
+for i, b in tqdm(enumerate(bz_vals), total=len(bz_vals)):
+    if i < 56: continue
+    #print(i,b)
+    field_z.set(b)
+    res = np.empty(len(p1_vals))
+    
+    for j, (p1, b1, st) in tqdm(enumerate(zip(p1_vals, b1_vals, st_vals)),total = len(p1_vals)):
+        #print(j,p1,b1,st)
+        P1.set(p1)
+        B1.set(b1)
+        ST.set(st)
+        
+        res[j] = readval.get()
+        
+    meas.saveArray(res, metadata=dict(bz=b))
+
+# 56, 57, 58, 59, 60, 61: SET shift -> redo
+
+# %%% plot test
+p = "D:/QBB16_SD11b_3/Spin//20241021-174255-magneto/20241021-180017-magneto_0"
+npzdict = uf.loadNpz(p)
+plt.plot(npzdict.array)
+trace = npzdict.array
+# %%%
+plt.plot(trace-np.mean(trace))
+plt.plot(ua.lfilter(np.diff(trace), 0))
+plt.plot(ua.lfilter(np.diff(trace), 1))
+
+meas_file, point_files = um.Measure.getFiles(r"D:/QBB16_SD11b_3/Spin/", 'magneto')
+[qplot(f) for f in point_files[50:]]
+
+#plt.plot(trace)
+#plt.plot(ua.lfilter(trace, 3))
+
+# %%%
+file = point_files[56]
+npzdict = uf.loadNpz(file)

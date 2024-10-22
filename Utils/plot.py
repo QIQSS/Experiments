@@ -632,6 +632,16 @@ def qplot(array, x_axis=None, show=True,
     # other
         use_latex = False
     """
+    if isinstance(array, str):
+        filename = array
+        npzdict = uf.loadNpz(filename)
+        text = filename.split('/')[-1].split('\\')[-1]
+        array = npzdict.array
+
+    elif isinstance(array, (dict, uu.customDict, uf.NpzDict)):
+        array = array.array
+
+
     # Ensure array is a numpy array
     array = np.asarray(array)
     
