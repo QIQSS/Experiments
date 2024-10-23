@@ -29,6 +29,10 @@ def fname():
     function_name = caller_frame.f_code.co_name
     return str(f"<{function_name}>")
 
+def qdict(*args):
+    return {var_name: locals()[var_name] for var_name in args if var_name in locals()}
+
+
 class customDict(dict):
     """ custom version of a dictionnary
     
