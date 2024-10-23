@@ -153,7 +153,9 @@ def gaussian2d(image, sigma=20, **kwargs):
 
 def lfilter(trace, n):
     from scipy.signal import lfilter
-    n = 5  # the larger n is, the smoother curve will be
+    if n == 0: return trace.copy()
+    
+    # the larger n is, the smoother curve will be
     b = [1.0 / n] * n
     a = 1
     yy = lfilter(b, a, trace)
