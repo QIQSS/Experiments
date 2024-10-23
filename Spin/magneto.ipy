@@ -134,3 +134,67 @@ meas_file, point_files = um.Measure.getFiles(r"D:/QBB16_SD11b_3/Spin/", 'magneto
 # %%%
 file = point_files[56]
 npzdict = uf.loadNpz(file)
+
+# %% ANALYSE
+# %%% one file
+file = '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Student/Alexis/_tmp/20241022-221259-magneto_97.npz'
+npz = uf.loadNpz(file)
+
+# %%%%
+arr, bz = npz.array, npz.rget('bz')
+qplot(arr)
+
+# %%%%
+diff = -ua.lfilter(np.diff(ua.lfilter(arr,10)), 20) 
+
+seg1, seg2 = diff[250:2600], diff[2600:]
+
+peaks_id1, prominence1 = ua.findPeaks(seg1, prominence=0.15e-10, show_plot=True)
+peaks_id2, prominence2 = ua.findPeaks(seg2, prominence=0.05e-10, show_plot=True)
+
+peaks_ids = np.concatenate((peaks_id1+250, peaks_id2+2600))
+qplot(arr, vline=peaks_ids-7)
+
+
+# %%%% plot
+p1_vals = np.linspace(0.3, 3.6, 3301)
+b1_vals = 0.2 * (p1_vals - 0.3) + 0.4
+fig, ax1 = plt.subplots()
+
+ax1.plot(p1_vals, arr)
+ax1.set_xlabel('P1 (V)')
+ax1.set_ylabel('I_SET')
+ax1.grid()
+
+ax2 = ax1.twiny()  # Create a twin axis sharing the same y-axis
+ax2.set_frame_on(True)
+ax2.patch.set_visible(False)
+ax2.xaxis.set_label_position('bottom')
+ax2.xaxis.set_ticks_position('bottom')
+ax2.spines['bottom'].set_position(('outward', 50))
+ax2.plot(b1_vals, arr, alpha=0)  # Plot invisible data to align the axes
+ax2.set_xlabel('B1 (V)')
+
+for i, p in enumerate(peaks_ids):
+    x = p1_vals[p]
+    ax1.axvline(x=x, linestyle=':', color='red')
+    ax1.text(x, np.min(arr), f'{i+1} electron', rotation=90, verticalalignment='bottom')
+
+plt.show()
+
+# %%% every file
+#idée: imshow(map_trace)
+# %%%% load
+map_trace = np.full((101,33011),np.nan, dtype=float)
+fields = np.empty(101)
+
+meas, points = um.load()
+
+for i, f in enumerate(points):
+    npz = uf.loadNpz(f)
+    fields[i] = npz.rget('bz')
+    map_trace[i] = npz.array
+
+imshow(map_trace)
+
+result = np.full((101,31),np.nan, dtype=float)
