@@ -93,6 +93,9 @@ rhP1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
 P1_en = rhP1.output_en
 P1 = rhP1.ramp
 
+# %%%p1 b1
+a = uf.loadNpz('D:/QBB16_SD11b_3/Spin/20241021-174255-magneto/20241023/20241023-102022-B1_P1.npz')
+imshow(a.array, y_slice=(0,46))
 # %%% start
 
 meas = um.Measure(r"D:/QBB16_SD11b_3/Spin/", 'magneto', metadata=dict(p1_vals=p1_vals, b1_vals=b1_vals, st_vals=st_vals, bz_vals=bz_vals))
@@ -138,22 +141,29 @@ npzdict = uf.loadNpz(file)
 # %% ANALYSE
 # %%% one file
 file = '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Student/Alexis/_tmp/20241022-221259-magneto_97.npz'
-npz = uf.loadNpz(file)
+file1 = r'D:\QBB16_SD11b_3\Spin\20241021-174255-magneto/20241021-180017-magneto_0.npz'
+file2 = r'D:\QBB16_SD11b_3\Spin\20241021-174255-magneto/20241023-003141-magneto_105.npz'
+npz1 = uf.loadNpz(file1)
+npz2 = uf.loadNpz(file2)
 
 # %%%%
-arr, bz = npz.array, npz.rget('bz')
-qplot(arr)
+arr1, bz1 = npz1.array, npz1.rget('bz')
+arr2, bz2 = npz2.array, npz2.rget('bz')
+qplot(arr1)
+qplot(arr2)
 
 # %%%%
-diff = -ua.lfilter(np.diff(ua.lfilter(arr,10)), 20) 
+diff = ua.lfilter(np.diff(ua.lfilter(arr1,10)), 20) 
 
-seg1, seg2 = diff[250:2600], diff[2600:]
+#seg1, seg2 = diff[250:2600], diff[2600:]
+slice_seg = slice(250,1500)
+seg1, seg2 = diff[slice_seg], diff[slice_seg.stop:]
 
-peaks_id1, prominence1 = ua.findPeaks(seg1, prominence=0.15e-10, show_plot=True)
+peaks_id1, prominence1 = ua.findPeaks(seg1, prominence=0.45e-10, show_plot=True)
 peaks_id2, prominence2 = ua.findPeaks(seg2, prominence=0.05e-10, show_plot=True)
 
-peaks_ids = np.concatenate((peaks_id1+250, peaks_id2+2600))
-qplot(arr, vline=peaks_ids-7)
+peaks_ids = np.concatenate((peaks_id1+slice_seg.start, peaks_id2+slice_seg.stop)) - 10
+qplot(arr1, vline=peaks_ids)
 
 
 # %%%% plot
@@ -161,7 +171,7 @@ p1_vals = np.linspace(0.3, 3.6, 3301)
 b1_vals = 0.2 * (p1_vals - 0.3) + 0.4
 fig, ax1 = plt.subplots()
 
-ax1.plot(p1_vals, arr)
+ax1.plot(p1_vals, arr1)
 ax1.set_xlabel('P1 (V)')
 ax1.set_ylabel('I_SET')
 ax1.grid()
@@ -172,29 +182,157 @@ ax2.patch.set_visible(False)
 ax2.xaxis.set_label_position('bottom')
 ax2.xaxis.set_ticks_position('bottom')
 ax2.spines['bottom'].set_position(('outward', 50))
-ax2.plot(b1_vals, arr, alpha=0)  # Plot invisible data to align the axes
+ax2.plot(b1_vals, arr1, alpha=0)  # Plot invisible data to align the axes
 ax2.set_xlabel('B1 (V)')
 
 for i, p in enumerate(peaks_ids):
     x = p1_vals[p]
     ax1.axvline(x=x, linestyle=':', color='red')
-    ax1.text(x, np.min(arr), f'{i+1} electron', rotation=90, verticalalignment='bottom')
+    ax1.text(x, np.min(arr1), f'{i+1} electron', rotation=90, verticalalignment='bottom')
 
 plt.show()
 
 # %%% every file
-#idée: imshow(map_trace)
 # %%%% load
-map_trace = np.full((101,33011),np.nan, dtype=float)
+map_trace = np.full((101,3301),np.nan, dtype=float)
 fields = np.empty(101)
 
-meas, points = um.load()
+meas, points = um.Measure.getFiles(r"D:/QBB16_SD11b_3/Spin/", 'magneto')
+
 
 for i, f in enumerate(points):
     npz = uf.loadNpz(f)
     fields[i] = npz.rget('bz')
     map_trace[i] = npz.array
-
-imshow(map_trace)
+# %%%% plot
+imshow(map_trace, x_axis=p1_vals, x_axis2=b1_vals, x_label='P1 (V)', x_label2='B1 (V)', y_axis=bz_vals, y_label='Bz (T)',cbar_label='I_SET')
+# %%%%
 
 result = np.full((101,31),np.nan, dtype=float)
+
+def analyse(trace, type_=1, text=''):
+    
+    diff = ua.lfilter(np.diff(ua.lfilter(trace,10)), 20)
+    diff = -diff if type_==2 else diff
+
+    slice_seg = {1: slice(250,1500), 2: slice(250, 2000)}[type_]
+
+    seg1, seg2 = diff[slice_seg], diff[slice_seg.stop:]
+    prom1, prom2 = {1: (0.45e-10, 0.05e-10), 2: (0.17e-10, 0.05e-10)}[type_]
+
+    peaks_id1, prominence1 = ua.findPeaks(seg1, prominence=prom1, show_plot=False)
+    peaks_id2, prominence2 = ua.findPeaks(seg2, prominence=prom2, show_plot=False)
+
+    peaks_ids = np.concatenate((peaks_id1+slice_seg.start, peaks_id2+slice_seg.stop)) - 10
+    qplot(trace, vline=peaks_ids, text=text+ f' nb:{len(peaks_ids)}')
+    return peaks_ids
+
+
+for i, t in enumerate(map_trace[:]):
+    type_ = 1 if i < 56 else 2
+    peaks_ids = analyse(t, type_, text=str(i))
+    #result[i] = peaks_ids
+
+# %%%% by hand
+# %%%%%
+d = {i:[] for i in range(101)}
+# %%%%%
+i =100
+trace, type_ = map_trace[i], 2
+diff = ua.lfilter(np.diff(ua.lfilter(trace,10)), 20)
+diff = -diff if type_==2 else diff
+
+slice_seg = {1: slice(250,1500), 2: slice(250, 2000)}[type_]
+end_seg = {1: None, 2:-400}[type_]
+
+seg1, seg2 = diff[slice_seg], diff[slice_seg.stop:end_seg]
+prom1, prom2 = {1: (0.50e-10, 0.08e-10), 2: (0.17e-10, 0.05e-10)}[type_]
+prom1, prom2 = {1: (1.6e-11, 0.08e-10), 2: (0.17e-10, 0.05e-10)}[type_]
+
+peaks_id1, prominence1 = ua.findPeaks(seg1, prominence=prom1, show_plot=True)
+#peaks_id1 = ua.removeId(peaks_id1,1)
+
+seg2 = np.concatenate((seg2, [min(seg2)]*5))
+peaks_id2, prominence2 = ua.findPeaks(seg2, prominence=prom2, show_plot=True)
+
+peaks_ids = np.concatenate((peaks_id1+slice_seg.start, peaks_id2+slice_seg.stop)) - 10
+qplot(trace, vline=peaks_ids[:], text=f'nb:{len(peaks_ids)}')
+
+d[i] = peaks_ids[:] # 
+#'D:/QBB16_SD11b_3/Spin/20241023/20241023-151217-magneto_positions.npz'
+# 0: 31 peaks
+# 30: 33 peaks
+# 34: 32 peaks
+# %%%%%
+qplot([ua.lfilter(t,5) for t in map_trace[:]],x_axis=p1_vals, multi=True,linestyle='',marker='.',vline=ua.multiget(p1_vals,peaks_ids))
+# %%%%%
+plt.figure()
+for i, t in d.items():
+    plt.plot(t, marker='.', linestyle='')
+plt.grid()
+# %%%%% cleanup, dict per transition
+expected_ranges = [[350,425], [425,500], [500,575], (600,700),(700,800), (850,900),(950,1000), (1025, 1100),(1100,1200),
+          [1200,1300], [1300,1400], [1400, 1450], (1450, 1550), (1550,1650), (1650, 1750), (1750,1825), (1825,1900),
+          [1900,2000], (2000,2100), (2200,2250), (2275,2350), (2375, 2450), (2450, 2550), (2550, 2600), (2625,2700),
+          (2700,2800), (2800,2875), (2900,2950), (3000,3050), (3050,3150), (3150,3250), (3250, 3300), (3300, 5000)]
+
+d2 = {}
+for transition_id, range_ in enumerate(expected_ranges):
+    
+    positions = [] # [(bz_id, position), ...]
+    
+    for trace_id, transition_position_ids in d.items():
+        
+        for i, id_ in enumerate(transition_position_ids):
+            
+            if id_ > range_[0] and id_ < range_[1]:
+                positions.append((trace_id,id_))
+                break
+        continue
+    
+    positions = np.array(positions)
+    d2[transition_id] = positions
+d2.pop(32, None)
+# remove 1, 2 and shift everything
+d2.pop(1,None)
+d2.pop(2,None)
+for i in range(3,32):
+    d2[i-2] = d2[i]
+# %%%%%
+plt.figure()
+for i in range(32):
+    plt.plot(ua.multiget(bz_vals, d2[i][:,0]), ua.multiget(p1_vals, d2[i][:,1]), marker='.', linestyle='')
+plt.grid()
+# %%%%% delta
+plt.figure()
+
+for i in range(0, 16):
+    delta = d2[i + 1][:, 1] - d2[i][:, 1]
+    y_values = ua.multiget(p1_vals, delta)
+    y_values = y_values - y_values[0] + i / 32
+    y_values *= 1e3
+    
+    x_values = ua.multiget(bz_vals, d2[i][:, 0])
+    
+    plt.plot(x_values, ua.gaussian(y_values,1), marker='.', linestyle='', label=f'{i}->{i + 1}')
+    
+    coefficients = np.polyfit(x_values, y_values, 1)
+    fit_line = np.polyval(coefficients, x_values)
+
+    plt.plot(x_values, fit_line, linestyle='-', color='grey', alpha=0.5)
+    
+    slope = coefficients[0]
+    plt.annotate(f'Slope: {slope:.3f}, {i}->{i + 1}', 
+                 xy=(x_values[-1], fit_line[-1]), 
+                 xytext=(x_values[-1], fit_line[-1]),
+                 fontsize=8)
+
+plt.xlabel('Bz (T)')
+plt.ylabel('E add (mV)')
+plt.grid()
+plt.show()
+
+
+
+
+# %% remesure avec patchs

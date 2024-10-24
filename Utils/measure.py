@@ -74,11 +74,19 @@ class Measure:
             raise Exception(f"Measure {name}: No directory found")
         
         directory = matches[0]    
-        files = uf.fileIn(directory)
+        files = uf.fileIn(directory, full_path=False)
         
-        measure_file = [(i,f) for i,f in enumerate(files) if f"_{name}" in f]
-        files.pop(measure_file[0][0])
+        measure_file = [(i,f) for i,f in enumerate(files) if f"_{name}" in f] 
+        files.pop(measure_file[0][0]) # remove measure file
         
-        return measure_file[0][1], files
+        files = [files[i] for i in range(len(files)) if name in files[i]] # remove files if {name} not in it.
+        files = [files[i] for i in range(len(files)) if 'exclude' not in files[i]] # remove files if 'exclude' in it.
+        
+        files = [os.path.join(directory, f) for f in files] # prepend full path
+        meas = os.path.join(directory, measure_file[0][1])
+        
+        
+        
+        return meas, files
 
         

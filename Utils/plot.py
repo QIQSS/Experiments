@@ -581,7 +581,7 @@ def _qplot_make_kwargs(
     return locals()
 
 
-def qplot(array, x_axis=None, show=True,
+def qplot(array, x_axis=None, show=True, multi=False,
           save=False, save_fig=False, save_png=False, path='./', filename='', metadata={},
           
           x_label='', y_label='',
@@ -643,7 +643,7 @@ def qplot(array, x_axis=None, show=True,
 
 
     # Ensure array is a numpy array
-    array = np.asarray(array)
+    #array = np.asarray(array)
     
     # save all kwargs:
     all_kwargs = locals() # !! no new vars before this line
@@ -652,6 +652,10 @@ def qplot(array, x_axis=None, show=True,
     plt.rcParams.update({'text.usetex': use_latex})
     
     # AXES:
+    if multi:
+        arrays = array
+        array = arrays[0]
+        
     if x_axis is None:
         x_axis = np.arange(len(array))
     elif isinstance(x_axis, (int, float)):
@@ -673,8 +677,12 @@ def qplot(array, x_axis=None, show=True,
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.figure
-    
-    ax.plot(x_axis, array, **plot_kwargs)
+        
+    if not multi:
+        ax.plot(x_axis, array, **plot_kwargs)
+    else:
+        [ax.plot(x_axis, arr, **plot_kwargs) for arr in arrays]
+        
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title)

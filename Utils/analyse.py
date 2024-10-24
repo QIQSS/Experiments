@@ -83,6 +83,18 @@ def sliceColumns(arr, start=None, stop=None, slice_by_val=False):
 
     return arr[:, start:stop]
 
+def removeId(array, id_):
+    arr = np.concatenate((array[:id_],array[id_+1:]))
+    return arr
+
+def padTo(array, length, value=np.nan):
+    padding = np.full(length-len(array),value)
+    arr = np.concatenate((array,padding))
+    return arr
+
+def removeNans(x):
+    x = x[~numpy.isnan(x)]
+    return x
 
 def meandiff(a):
     return np.mean(np.diff(a))
