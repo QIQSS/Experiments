@@ -29,7 +29,7 @@ def fileIn(paths: str|List[str],
             
         ls = os.listdir(path)
         ls_full = [os.path.join(path, f) for f in ls]
-        files_in_p = [f_or_d for f_or_d in ls_full if os.path.isfile(f_or_d)]
+        files_in_p = [f_or_d for f_or_d, f_or_d_full in zip(ls, ls_full) if os.path.isfile(f_or_d_full)]
 
         if full_path:
             files_in_p = [os.path.join(path, f) for f in files_in_p]

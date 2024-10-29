@@ -112,3 +112,29 @@ def getATSImage(ats, with_time=False):
         return ret, timelist
     return ret
 
+
+def measureContMode(ats, awg, acq_time, nbwindow, sr=50_000):
+    awgContMode(awg)
+    
+    ats.sample_rate.set(sr)
+    ats.nbwindows.set(nbwindow)
+    ats.acquisition_length_sec.set(acq_time)
+    
+    ats.ConfigureBoard()
+    
+    def get(times=1):
+        acq = None
+        awg.run(True)
+        
+        for i in range(times):
+            data = ats.fetch_all.get()
+            nb = ats.nbwindows.getcache()
+            data = data[2].reshape((nb,-1))
+            if acq is None:
+                acq = np.empty((nb*times, len(data[0])),dtype=np.float64)
+            acq[nb*i:nb*(i+1)] = data
+        
+        awg.run(False)
+        return acq
+    
+    return get

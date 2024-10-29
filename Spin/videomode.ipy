@@ -1,0 +1,190 @@
+# %% init
+LAB_SCRIPT_PATH = "/home/local/USHERBROOKE/mora0502/Codes/Lab-Scripts" # ABSOLUTE PATH, without trailing /
+LAB_SCRIPT_PATH = "C:\Codes\Lab-Scripts" # ABSOLUTE PATH, without trailing /
+
+%cd $LAB_SCRIPT_PATH
+LOG_PATH = r'D:/QBB16_SD11b_3/Spin/'
+LOG_PATH_HL = r'D:/QBB16_SD11b_3/Hlab/'
+
+from pyHegel import instruments
+from pyHegel.commands import wait
+
+import numpy as np
+from alive_progress import alive_bar, alive_it
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import instruments as ui
+from Utils import utils as uu
+
+from Utils.plot import imshow
+from Pulses.Builder import Pulse, genPWLFile, equalizeTime
+
+from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
+# %% setup
+
+awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
+gain = awg.gain = 1/(0.02512)*0.4
+awg_sr = 20e4
+channel = {'P1':1, 'P2':2}
+send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, pad='last', mod=64)
+awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
+awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
+awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
+awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
+awg.write('SOURce2:DAC:RESolution 15')
+awg.write('SOURce3:DAC:RESolution 15')
+awg.output_en.set(True)
+# debug: awg.clear()
+
+ats = instruments.ATSBoard(systemId=1, cardId=1)
+ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get(), 'nbwindows':ats.nbwindows.get()}
+ats.active_channels.set(['A','B'])
+ats.sample_rate.set(10000)
+ats.trigger_level_1.set(1000)
+ats.ConfigureBoard()
+ats.nbwindows.set(1)
+ats.trigger_delay.set(0)
+def acquire(acq_time):
+    ats.run_and_wait()
+    awg.write('TRIGger BTRigger')
+    wait(acq_time)
+    data = ats.fetch.get()[2]
+    return data
+
+#bi7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
+#ST = instruments.LimitDevice((bi7.ramp, {'ch': 1}), min=-4.0, max=4.0)
+
+#zi = instruments.zurich_UHF("dev2949")
+#zi_get = lambda: commands.get((zi.readval, {'vals': ['r'], 'ch': 0}))[0]
+
+rhP1 = bi3 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
+rhP2 = bi1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
+def shiftP1(val): rhP1.ramp.set(rhP1.get()+val)
+def shiftP2(val): rhP2.ramp.set(rhP2.get()+val)
+set_function = {'P1': rhP1.ramp.set, 'P2': rhP2.ramp.set}
+shift_function = {'P1': shiftP1, 'P2': shiftP2}
+
+# %% VM RAMP
+
+###### settings
+ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
+
+valueRamp, deltaRamp, timeRamp = 0.93, 0.045, 0.024 #max: 0.045, 0.024 
+valueStep, deltaStep, nbStep = 0.68, 0.010, 101
+
+
+sync_time_after_ramp = 0.01
+ramp_direction = 'up' # 'up' | 'down'
+################
+
+# pulses
+listStep = np.linspace(valueStep-deltaStep, valueStep+deltaStep, nbStep)
+pulseRamp = Pulse(name='ramp', shape_comp=True)
+pulseRamp.add(timeRamp/2)
+pulseRamp.addRamp(timeRamp, {'up': -1, 'down': +1}[ramp_direction]*deltaRamp,
+                  {'up': +1, 'down': -1}[ramp_direction]*deltaRamp, mark=True)
+pulseRamp.add(sync_time_after_ramp)
+
+pulseStep = pulseRamp.genMarksOnly(name='step')
+# pulseRamp.plot(pulseStep, wide=True, no_shape_comp=False)
+
+# send to awg
+ui.awgBTrigMode(awg)
+send(pulseStep, channel[step_on])  # channel 1 (2) on P1 (P2)
+awg.output_en.set(True)
+send(pulseRamp, channel[ramp_on])
+awg.output_en.set(True)
+send(pulseRamp, ch=3)
+awg.output_en.set(False)
+awg.run(True)
+
+ats.acquisition_length_sec.set(timeRamp)
+#ats.sample_rate.set(100000)
+ats.nbwindows.set(1)
+set_function[step_on](valueStep)
+set_function[ramp_on](valueRamp)
+
+#  "video" mode
+
+sweep = SweepAxis(listStep, fn_next=set_function[step_on], label=step_on, enable=True)
+
+
+def vmget():
+    sweep.next()
+    data = acquire(timeRamp)
+    if ramp_direction == 'down':
+        data = np.flip(data)
+    data = ua.gaussian(data, 1)
+    #data = ua.lfilter(data, 1)
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_direction}", xsweep=sweep,
+                     axes_dict={
+                         'y': [valueRamp-deltaRamp, valueRamp+deltaRamp]},
+                     fn_yshift=shift_function[ramp_on])
+
+# %%% save
+img = vm.data_buffer[0].T
+up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
+          title='zone psb video mode', filename='transition_psb', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH_HL)
+
+
+
+# %% funnel
+# %%% pulse
+
+##### settings
+#   (P1  ,  P2)
+map_file = 'D:/QBB16_SD11b_3/Hlab/20241010/20241010-163007-transition_psb'
+base_level = {'P1': 1.28, 'P2': 0.37}
+
+
+detuning_slope = -1/8
+
+p1_40 = +0.015
+p1_read = -0.003
+p1_31 =  -0.015
+
+_init = (0, 0)
+_read = (p1_read , p1_read*detuning_slope)
+_31 = (p1_31, p1_31*detuning_slope )
+_40 = (p1_40, p1_40*detuning_slope )
+
+A, tA = _40, 0.020
+B, tB = _31, 0.00
+C, tC = _read, 0.01
+D, tD = _read, 0.00
+E, tE = _read, 0.00
+
+tinit = 0.05 # min around 0.015
+trampAB = 0.005 # var
+trampBC = 0.000
+trampCD = 0.00
+trampDE = 0.00
+
+from Pulses.ABCDE import genABCDE
+pulseP1, pulseP2 = genABCDE([A,B,C,D,E], [tA,tB,tC,tD,tE], [trampAB,trampBC,trampCD,trampDE], tinit, plot=True)
+
+# plot map
+points = [(i+1, x+base_level['P1'],y+base_level['P2']) for i,(x,y) in enumerate([A, B, C, D, E])]
+points += [(0, base_level['P1'],base_level ['P2'])]
+imshow(map_file, scatter_points=points, scatter_points_label='id')
+#genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
+
+# %%% vm
+
+acq_time = pulseP1.getMarkDuration(awg_sr)
+ats.acquisition_length_sec.set(acq_time)
+ats.nbwindows.set(1)
+
+rhP1.ramp.set(base_level['P1'])
+rhP2.ramp.set(base_level['P2'])
+
+def vmget():
+    data = acquire(acq_time)
+    data = ua.lfilter(data, 2)
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,xlabel="time",axes_dict={'x': acq_time})
