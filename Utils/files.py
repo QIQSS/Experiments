@@ -133,7 +133,10 @@ def loadNpz(name, autosave_on_edit=True):
     """
     if not name.endswith('.npz'):
         name += '.npz'
-    
+    if name.startswith('smb://bob.physique.usherbrooke.ca/'):
+        name = name.replace('smb://bob.physique.usherbrooke.ca/', 
+                     '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=')
+
     npzfile = np.load(name, allow_pickle=True)
     ret = {}
     for key in npzfile:

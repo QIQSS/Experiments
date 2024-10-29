@@ -1,6 +1,6 @@
 # %% imports
 # -*- coding: utf-8 -*-
-OS = 'w' # 'l' | 'w'
+OS = 'l' # 'l' | 'w'
 LS_PATH, LOG_PATH = \
             {'w':['C:/Codes/Lab-Scripts', 
                   '//bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/'],
@@ -105,8 +105,8 @@ nuit3 = uf.loadNpz(LOG_PATH+"results/nuit3.npz")
 freqs0 = do_analysis('freqs0', force=False, save=True)
 freqs1 = do_analysis('freqs1', force=False, save=True)
 freqs2 = do_analysis('freqs2', force=False, save=True)
-nuit = do_analysis('nuit', force=False, save=True)
-b600m0 = do_analysis('b600m_groschirp', force=True, save=True)
+#nuit = do_analysis('20240919-170406-nuit', force=False, save=True)
+b600m0 = do_analysis('b600m_groschirp', force=False, save=True)
 b600m1 = do_analysis('b600m_1', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044] )
 b600m_long = do_analysis('b600m_long', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044], skip=[667] )
 b600m_p1 = do_analysis('b600m_power1', force=False, save=True, t_acq=0.045, t_read1=[0.02, 0.03], t_read2=[0.035, 0.044])
@@ -210,15 +210,18 @@ to_plot = [
             # b2_45m_4,
             # b2_45m_5,
             # _31r31r_large1,
-            _31r31r_large2,
-            _31r31r_soir,
-            _31r31r_nuit,
-            _31r31r_champs2,
-            _31r31r_zoom1,
-            _31r31r_zoom2,
-            _31r31r_nuit2,
+            
+            # _31r31r_large2,
+            # _31r31r_soir,
+            # _31r31r_nuit,
+            # _31r31r_champs2,
+            # _31r31r_zoom1,
+            # _31r31r_zoom2,
+            # _31r31r_nuit2,
+            
     # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
+            b600m_long,
             # b600m_z2,
             # b600m_n1,
             # b600m_n12,
