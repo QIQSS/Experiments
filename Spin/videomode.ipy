@@ -39,7 +39,7 @@ awg.output_en.set(True)
 # debug: awg.clear()
 
 ats = instruments.ATSBoard(systemId=1, cardId=1)
-ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get()}
+ats.conf = lambda: {'sr':ats.sample_rate.get(), 'pts':ats.samples_per_record.get(), 't':ats.acquisition_length_sec.get(), 'nbwindows':ats.nbwindows.get()}
 ats.active_channels.set(['A','B'])
 ats.sample_rate.set(10000)
 ats.trigger_level_1.set(1000)
@@ -71,8 +71,8 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 1.20, 0.045, 0.02
-valueStep, deltaStep, nbStep = 0.932, 0.020, 101
+valueRamp, deltaRamp, timeRamp = 0.93, 0.045, 0.024 #max: 0.045, 0.024 
+valueStep, deltaStep, nbStep = 0.68, 0.010, 101
 
 
 sync_time_after_ramp = 0.01
@@ -108,8 +108,7 @@ set_function[ramp_on](valueRamp)
 
 #  "video" mode
 
-sweep = SweepAxis(
-    listStep, fn_next=set_function[step_on], label=step_on, enable=True)
+sweep = SweepAxis(listStep, fn_next=set_function[step_on], label=step_on, enable=True)
 
 
 def vmget():
@@ -118,6 +117,7 @@ def vmget():
     if ramp_direction == 'down':
         data = np.flip(data)
     data = ua.gaussian(data, 1)
+    #data = ua.lfilter(data, 1)
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_direction}", xsweep=sweep,
@@ -130,3 +130,61 @@ img = vm.data_buffer[0].T
 up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
           title='zone psb video mode', filename='transition_psb', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH_HL)
 
+
+
+# %% funnel
+# %%% pulse
+
+##### settings
+#   (P1  ,  P2)
+map_file = 'D:/QBB16_SD11b_3/Hlab/20241010/20241010-163007-transition_psb'
+base_level = {'P1': 1.28, 'P2': 0.37}
+
+
+detuning_slope = -1/8
+
+p1_40 = +0.015
+p1_read = -0.003
+p1_31 =  -0.015
+
+_init = (0, 0)
+_read = (p1_read , p1_read*detuning_slope)
+_31 = (p1_31, p1_31*detuning_slope )
+_40 = (p1_40, p1_40*detuning_slope )
+
+A, tA = _40, 0.020
+B, tB = _31, 0.00
+C, tC = _read, 0.01
+D, tD = _read, 0.00
+E, tE = _read, 0.00
+
+tinit = 0.05 # min around 0.015
+trampAB = 0.005 # var
+trampBC = 0.000
+trampCD = 0.00
+trampDE = 0.00
+
+from Pulses.ABCDE import genABCDE
+pulseP1, pulseP2 = genABCDE([A,B,C,D,E], [tA,tB,tC,tD,tE], [trampAB,trampBC,trampCD,trampDE], tinit, plot=True)
+
+# plot map
+points = [(i+1, x+base_level['P1'],y+base_level['P2']) for i,(x,y) in enumerate([A, B, C, D, E])]
+points += [(0, base_level['P1'],base_level ['P2'])]
+imshow(map_file, scatter_points=points, scatter_points_label='id')
+#genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
+
+# %%% vm
+
+acq_time = pulseP1.getMarkDuration(awg_sr)
+ats.acquisition_length_sec.set(acq_time)
+ats.nbwindows.set(1)
+
+rhP1.ramp.set(base_level['P1'])
+rhP2.ramp.set(base_level['P2'])
+
+def vmget():
+    data = acquire(acq_time)
+    data = ua.lfilter(data, 2)
+    return data
+
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,xlabel="time",axes_dict={'x': acq_time})

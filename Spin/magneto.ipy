@@ -24,6 +24,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib
 
+from pyHegel import instruments
+
 # %% map P1 B1
 dict_file = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/113941_B1_P1.txt')
 set_low = uf.readfileNdim(LOG_PATH + '/Hlab/20241021/145605_ST_low_sensitivity.txt')
@@ -75,7 +77,6 @@ plt.plot(st_vals,label='st')
 plt.legend()
 
 # %%% instruments
-from pyHegel import instruments
 dmm = instruments.agilent_multi_34410A("USB0::0x2A8D::0x0101::MY57515472::INSTR")
 readval = dmm.readval
 readval = instruments.ScalingDevice(readval, scale_factor=10000000.0, only_val=True, invert_trans=True)
@@ -83,6 +84,9 @@ bilt_9 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=9
 B1_en = (bilt_9.output_en, {'ch': 2})
 B1 = (bilt_9.ramp, {'ch': 2})
 B1 = instruments.LimitDevice(B1, min=-3.0, max=3.0)
+B2_en = (bilt_9.output_en, {'ch': 4})
+B2 = (bilt_9.ramp, {'ch': 4})
+B2 = instruments.LimitDevice(B1, min=-3.0, max=3.0)
 bilt_7 = instruments.iTest_be214x("TCPIP::192.168.150.112::5025::SOCKET", slot=7)
 ST_en = (bilt_7.output_en, {'ch': 1})
 ST = (bilt_7.ramp, {'ch': 1})
@@ -92,6 +96,9 @@ field_z = magnet_z.ramp_field_T
 rhP1 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=3)
 P1_en = rhP1.output_en
 P1 = rhP1.ramp
+rhP2 = instruments.iTest_be2102("TCPIP::192.168.150.112::5025::SOCKET", slot=1)
+P2_en = rhP2.output_en
+P2 = rhP2.ramp
 
 # %%%p1 b1
 a = uf.loadNpz('D:/QBB16_SD11b_3/Spin/20241021-174255-magneto/20241023/20241023-102022-B1_P1.npz')
@@ -335,4 +342,75 @@ plt.show()
 
 
 
-# %% remesure avec patchs
+# %% REMESURE avec patchs
+
+# %%% trace p1
+#P2.set(1.2), B2.set(1.2), B1.set(0.3)
+
+p1_vals = np.linspace(.6, 2, 601)
+st_vals = -0.0078*(p1_vals-0.73) + 2.978
+
+res = np.empty(len(p1_vals))
+
+for i, (p1,st) in tqdm(enumerate(zip(p1_vals,st_vals)), total=len(p1_vals)):
+    P1.set(p1)
+    ST.set(st)
+    res[i] = readval.get()
+
+qplot(res, x_axis=p1_vals)
+uf.saveToNpz(r"D:/QBB16_SD11b_3/Spin/", "P1_trace_0T", res)
+
+# %%% transitions positions 0T
+trace = uf.loadNpz('D:/QBB16_SD11b_3/Spin/20241025/20241025-165009-P1_trace_0T.npz').array
+
+diff = ua.lfilter(np.diff(ua.lfilter(trace,2)), 0) 
+peaks_id, stats = ua.findPeaks(diff, prominence=1e-10, show_plot=True)
+
+qplot(trace, x_axis=p1_vals)
+
+# %%% prepa
+patch_delta, patch_nbpts = 0.06, 201
+initial_positions = [0.729, 0.881, 1.002, 1.11, 1.231, 1.339, 1.441, 1.545, 1.646, 1.750, 1.852, 1.949]
+patches_p1 = [np.linspace(pos-patch_delta, pos+patch_delta, patch_nbpts) for pos in initial_positions]
+patches_st = [-0.0078*(p1_vals-0.35) + 2.978 for p1_vals in patches_p1]
+
+bz_vals = np.linspace(0, 4.9, 151)
+magnet_z.ramp_wait_after.set(120)
+
+# %%% start 
+
+meas = um.Measure(r"D:/QBB16_SD11b_3/Spin/", 'magneto2', metadata=dict(patches_p1=patches_p1, patches_st=patches_st, initial_positions=initial_positions))
+
+
+for i, b in tqdm(enumerate(bz_vals), total=len(bz_vals)):
+    print(f"nb: {i}, fieldz: {b}")
+    
+    field_z.set(b)
+    res = np.empty((len(patches_p1), patch_nbpts))
+    
+    for patch_num, (patch_p1, patch_st) in enumerate(zip(patches_p1, patches_st)):
+        print(f"Patch: {patch_num}")
+        
+        for i, (p1_val, st_val) in enumerate(zip(patch_p1, patch_st)):
+            #print(f"set val: {p1_val}")
+            P1.set(p1_val)
+            ST.set(st_val)
+            
+            res[patch_num, i] = readval.get()
+        
+    meas.saveArray(res, metadata=dict(bz=b))
+
+
+# %% ANALYSE 2
+
+# %%% load
+map_trace = np.full((151,12*201), np.nan, dtype=float)
+fields = np.empty(151)
+
+meas, points = um.Measure.getFiles(r"D:/QBB16_SD11b_3/Spin/", 'magneto2')
+
+
+for i, f in enumerate(points):
+    npz = uf.loadNpz(f)
+    fields[i] = npz.rget('bz')
+    map_trace[i] = npz.array.flatten()
