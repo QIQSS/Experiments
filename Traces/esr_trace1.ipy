@@ -187,17 +187,17 @@ b2_45m_5 = do_analysis('b2_45m_5', alg='blockade', force=0, save=True, t_acq=0.0
 # %%
 _31r31r_large1 = do_analysis('31r31r_large1', alg='blockade', force=0, save=True, t_acq=0.0128, t_read1=[0.002, 0.006], t_read2=[0.00725, 0.012], tolerance=10, skip=[])
 
-_31r31r_large2 = do_analysis('31r31r_large2', alg='flip', force=1, save=True, t_acq=0.0128, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.010], tolerance=10, skip=[])
+_31r31r_large2 = do_analysis('31r31r_large2', alg='flip', force=0, save=True, t_acq=0.0128, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.010], tolerance=10, skip=[])
 
 
 _31r31r_soir = do_analysis('31r31r_soir', alg='blockade', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, skip=[])
-_31r31r_nuit = do_analysis('31r31r_nuit', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, threshold=-37.5, skip=[])
-_31r31r_champs2 = do_analysis('31r31r_champs2', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, threshold=-33, skip=[])
-_31r31r_zoom1 = do_analysis('31r31r_zoom1', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=-34, skip=[])
-_31r31r_zoom2 = do_analysis('31r31r_zoom2', alg='flip', force=1, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=-34.5, skip=[])
+_31r31r_nuit = do_analysis('31r31r_nuit', alg='flip', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, threshold=-37.5, skip=[])
+_31r31r_champs2 = do_analysis('31r31r_champs2', alg='flip', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=10, threshold=-33, skip=[])
+_31r31r_zoom1 = do_analysis('31r31r_zoom1', alg='flip', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=-34, skip=[])
+_31r31r_zoom2 = do_analysis('31r31r_zoom2', alg='flip', force=0, save=True, t_acq=0.011, t_read1=[0.002, 0.004], t_read2=[0.0065, 0.008], tolerance=5, threshold=-34.5, skip=[])
 
 
-_31r31r_nuit2 = do_analysis('31r31r_nuit2', alg='blockade', force=1, save=True, t_acq=0.0384, t_read1=[0.010, 0.020], t_read2=[0.030, 0.037], tolerance=50, threshold=None, skip=[])
+_31r31r_nuit2 = do_analysis('31r31r_nuit2', alg='blockade', force=0, save=True, t_acq=0.0384, t_read1=[0.010, 0.020], t_read2=[0.030, 0.037], tolerance=50, threshold=None, skip=[])
 
 
 # %% plot
@@ -211,17 +211,17 @@ to_plot = [
             # b2_45m_5,
             # _31r31r_large1,
             
-            # _31r31r_large2,
-            # _31r31r_soir,
-            # _31r31r_nuit,
-            # _31r31r_champs2,
-            # _31r31r_zoom1,
-            # _31r31r_zoom2,
-            # _31r31r_nuit2,
+            #_31r31r_large2,
+            #_31r31r_soir,
+            _31r31r_nuit,
+            _31r31r_champs2,
+            _31r31r_zoom1,
+            _31r31r_zoom2,
+            #_31r31r_nuit2,
             
     # nuit3, freqs0, freqs1, freqs2, nuit, b600m0, b600m1, b600m_long, b600m_p1, b600m_p2,
             # b600m_z1,
-            b600m_long,
+            #b600m_long,
             # b600m_z2,
             # b600m_n1,
             # b600m_n12,

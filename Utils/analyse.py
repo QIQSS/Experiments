@@ -93,14 +93,22 @@ def padTo(array, length, value=np.nan):
     return arr
 
 def removeNans(x):
-    x = x[~numpy.isnan(x)]
+    x = x[~np.isnan(x)]
     return x
 
 def meandiff(a):
     return np.mean(np.diff(a))
 
-def multiget(arr, list_of_indexes):
-    return [arr[i] for i in list_of_indexes]
+def multiget(arr, list_of_indexes, fallback=np.nan):
+    def isValidIndice(i):
+        return 0 <= i < len(arr) and arr[i] is not None and not np.isnan(arr[i])
+    return [arr[i] if isValidIndice(i) else fallback for i in list_of_indexes]
+
+def firstNonNanValue(array):
+    for value in array:
+        if not np.isnan(value):
+            return value
+    return None
 
 #### filters
 
@@ -172,6 +180,7 @@ def lfilter(trace, n):
     a = 1
     yy = lfilter(b, a, trace)
     return yy
+
     
 def derivative2d(array, axis='xy'):
     # Calculate the derivatives along the x (columns) and y (rows) axes
@@ -389,8 +398,9 @@ def findClassifyingThreshold(double_gaussian_parameters,
             th = result.x
     return th
 
-def findPeaks(points, show_plot=False, 
+def findPeaks(points, 
               prominence=1,
+              show_plot=False, 
               **scipy_kwargs):
 
     peaks, properties = scipy.signal.find_peaks(points, prominence=prominence, **scipy_kwargs)

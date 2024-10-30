@@ -369,16 +369,20 @@ peaks_id, stats = ua.findPeaks(diff, prominence=1e-10, show_plot=True)
 qplot(trace, x_axis=p1_vals)
 
 # %%% prepa
+
+p1_vals = np.linspace(.6, 2, 601)
+st_vals = -0.0078*(p1_vals-0.73) + 2.978
+
 patch_delta, patch_nbpts = 0.06, 201
 initial_positions = [0.729, 0.881, 1.002, 1.11, 1.231, 1.339, 1.441, 1.545, 1.646, 1.750, 1.852, 1.949]
 patches_p1 = [np.linspace(pos-patch_delta, pos+patch_delta, patch_nbpts) for pos in initial_positions]
 patches_st = [-0.0078*(p1_vals-0.35) + 2.978 for p1_vals in patches_p1]
 
 bz_vals = np.linspace(0, 4.9, 151)
-magnet_z.ramp_wait_after.set(120)
 
 # %%% start 
 
+magnet_z.ramp_wait_after.set(120)
 meas = um.Measure(r"D:/QBB16_SD11b_3/Spin/", 'magneto2', metadata=dict(patches_p1=patches_p1, patches_st=patches_st, initial_positions=initial_positions))
 
 
@@ -405,12 +409,280 @@ for i, b in tqdm(enumerate(bz_vals), total=len(bz_vals)):
 
 # %%% load
 map_trace = np.full((151,12*201), np.nan, dtype=float)
+traces = np.full((151, 12, 201), np.nan, dtype=float)
 fields = np.empty(151)
+trans_positions = np.full((12, 151), np.nan, dtype=float)
 
-meas, points = um.Measure.getFiles(r"D:/QBB16_SD11b_3/Spin/", 'magneto2')
+meas, points = um.Measure.getFiles(f"{LOG_PATH}/Spin", 'magneto2')
 
 
 for i, f in enumerate(points):
     npz = uf.loadNpz(f)
     fields[i] = npz.rget('bz')
     map_trace[i] = npz.array.flatten()
+    traces[i] = npz.array
+imshow(map_trace, x_axis = p1_vals, x_label='P1 (V)', y_axis=bz_vals, y_label='Bz (T)')
+
+# %%% first trans
+plt.figure()
+to_plot = [ua.lfilter(-np.diff(traces[i,0]),15) for i in range(len(traces))]
+vlines = [ua.findPeaks(trace,0.8e-10)[0] for trace in to_plot]
+vlines = [vl[0] if len(vl) == 1 else np.nan for vl in vlines]
+
+_ = [plt.plot(trace) for trace in to_plot]
+_ = [plt.vlines(v, np.min(np.array(to_plot)), np.max(np.array(to_plot))) for v in vlines if len(v) >= 1]
+
+trans_pos = ua.multiget(p1_vals, vlines)
+trans_positions[0] = trans_pos
+
+# %%% all others
+for trans_id in [range(12)]:
+    #to_plot = [traces[i, trans_id] for i in range(len(traces))]
+    to_plot = [ua.lfilter(-np.diff(traces[i,trans_id]),15) for i in range(len(traces))]
+    vlines = [ua.findPeaks(trace,0.6e-10)[0] for trace in to_plot]
+    vlines = [vl[0] if len(vl) == 1 else np.nan for vl in vlines]
+    
+
+    trans_pos = ua.multiget(p1_vals, vlines)
+    trans_positions[trans_id] = trans_pos
+
+    plt.figure()
+    _ = [plt.plot(traces[i, trans_id]) for i in range(len(traces))]
+    _ = [plt.vlines(v, np.min(np.array(to_plot)), np.max(np.array(to_plot))) for v in vlines]
+
+# %%% plot
+plt.figure()
+_ = [plt.plot(bz_vals, trans_positions[i], linestyle='', marker='o',label=i) for i in range(len(trans_positions))]
+plt.legend()
+# %%% fit and plot
+fits = []
+fit_lines = []
+plt.figure()
+for i in range(len(trans_positions)):
+    valid_indices = ~np.isnan(trans_positions[i])
+    filtered_bz_vals = bz_vals[valid_indices]
+    filtered_trans_positions = trans_positions[i][valid_indices]
+    
+    fit_params = np.polyfit(filtered_bz_vals, filtered_trans_positions, 1)
+    fits.append(fit_params)     
+    fit_line = np.polyval(fit_params, bz_vals)
+    fit_lines.append(fit_line)
+   
+    
+    
+    color = plt.gca()._get_lines.get_next_color()
+    plt.plot(bz_vals, fit_line * i/32, linestyle='-', marker='', color=color)
+    plt.plot(bz_vals, trans_positions[i] * i/32, linestyle='', marker='o', color=color)
+   
+    plt.annotate(f'Slope: {slope:.3f}, {i}->{i + 1}', 
+                 xy=(x_values[-1], fit_line[-1]), 
+                 xytext=(x_values[-1], fit_line[-1]),
+                 fontsize=8)
+    
+# %%% delta then plot
+plt.figure()
+
+for i in range(len(fit_lines)-1):
+    delta = fit_lines[i+1] - fit_lines[i]
+    plt.plot(bz_vals, delta + i / 32, label=i)
+
+plt.legend()
+    
+
+
+
+
+for i in range(0, 16):
+    delta = d2[i + 1][:, 1] - d2[i][:, 1]
+    y_values = ua.multiget(p1_vals, delta)
+    y_values = y_values - y_values[0] + i / 32
+    y_values *= 1e3
+    
+    x_values = ua.multiget(bz_vals, d2[i][:, 0])
+    
+    plt.plot(x_values, ua.gaussian(y_values,1), marker='.', linestyle='', label=f'{i}->{i + 1}')
+    
+    coefficients = np.polyfit(x_values, y_values, 1)
+    fit_line = np.polyval(coefficients, x_values)
+
+    plt.plot(x_values, fit_line, linestyle='-', color='grey', alpha=0.5)
+    
+    slope = coefficients[0]
+    plt.annotate(f'Slope: {slope:.3f}, {i}->{i + 1}', 
+                 xy=(x_values[-1], fit_line[-1]), 
+                 xytext=(x_values[-1], fit_line[-1]),
+                 fontsize=8)
+
+plt.xlabel('Bz (T)')
+plt.ylabel('E add (mV)')
+plt.grid()
+plt.show()
+
+
+# %% ANALYSE 3 (2 redo)
+# %%% load
+traces = np.full((151, 12, 201), np.nan, dtype=float)
+
+meas, points = um.Measure.getFiles(f"{LOG_PATH}/Spin", 'magneto2')
+
+for i, f in enumerate(points):
+    npz = uf.loadNpz(f)
+    traces[i] = npz.array
+#imshow(map_trace, x_axis = p1_vals, x_label='P1 (V)', y_axis=bz_vals, y_label='Bz (T)')
+
+# %%% plot all
+def plotAll(np3d, filt=lambda im: im, x=0, 
+            superpose_trans=False, trans_positions=None):
+    fig, axes = plt.subplots(2, 6, figsize=(15, 8), sharex=False, sharey=False)  # Changed to 2x6 layout
+    
+    for i in range(12):
+        img = filt(np3d[:, i, :])
+        img = img[:, x:-x]
+        ax = axes[i // 6, i % 6]  # Adjusted indexing for 2x6 layout
+        
+        x_vals = patches_p1[i]
+        
+        im = ax.imshow(
+            img, aspect='auto', interpolation='none',
+            extent=[x_vals[x], x_vals[-x], bz_vals.min(), bz_vals.max()],
+            origin='lower', cmap='viridis'
+        )
+
+        
+        if i == 6:
+            ax.set_xlabel('P1 (V)')
+            ax.set_ylabel('Bz (T)')
+
+        if superpose_trans and trans_positions is not None:
+            ax.scatter(trans_positions[i], bz_vals, color='red', s=5) 
+          
+        xticks = np.arange(x_vals[x], x_vals[-x], 0.05)
+        ax.set_xticks(np.round(xticks, 3))
+        ax.text(0.9, 0.9, f'{i+1}', fontsize=8, color='white', ha='right', va='top', transform=ax.transAxes)
+    
+    plt.subplots_adjust(hspace=0.4, wspace=0.4)  # Adjust horizontal and vertical spacing
+    plt.tight_layout(rect=[0, 0.05, 1, 1])  # Adjust layout to fit labels within the figure
+    plt.show()
+    plt.tight_layout()
+
+# Function to compute the derivative in the x direction
+def compute_derivative(image):
+    return np.gradient(image, axis=1)  # Assuming x is the second dimension
+
+plotAll(traces, x=30)
+#plotAll(traces, filt=compute_derivative, x=30)
+# %%% find transition position
+trans_positions = np.full((12, 151), np.nan, dtype=float)
+b_id = 80
+trace = traces[b_id]
+
+plt.figure()
+peaks = []
+for patch_id, patch in enumerate(trace):
+    #print(patch_id)
+    #plt.plot(patch, label=patch_id)
+    filtered = patch.copy()
+    filtered = ua.gaussian(filtered, 3)
+    filtered = abs(np.diff(filtered))
+    #plt.plot(filtered, label=patch_id)
+    p, _ = ua.findPeaks(filtered, 1e-10)    
+    peaks.append(p if len(p) == 1 else np.nan)
+    plt.vlines(p, np.min(patch), np.max(patch), color='red', linestyle='--')
+    plt.plot(patch, label=patch_id)
+    
+plt.legend()
+
+# %%%% above but for all b_id
+trans_positions = np.full((12, 151), np.nan, dtype=float)
+trans_positions_p1 = np.full((12, 151), np.nan, dtype=float)
+
+for b_id in range(len(bz_vals)):
+    peaks = []
+    for patch_id, patch in enumerate(traces[b_id]):
+        filtered = patch.copy()
+        filtered = ua.gaussian(filtered, 3)
+        filtered = abs(np.diff(filtered))
+        if b_id < 5:
+            prominence = 1.8e-11
+        elif b_id < 86:
+            prominence = 0.9e-10
+        else:
+            prominence = 1.8e-11
+        p, _ = ua.findPeaks(filtered, prominence)    
+        peaks.append(p[0] if len(p) == 1 else np.nan)
+        
+    # print(peaks)
+    p1s = [patches_p1[patch_id][int(p)] if not np.isnan(p) else np.nan for patch_id, p in zip(range(12), peaks)]
+    trans_positions[:,b_id] = peaks
+    trans_positions_p1[:,b_id] = p1s
+    
+def filt(patch):
+    filtered = patch.copy()
+    filtered = ua.gaussian(filtered, 3)
+    filtered = abs(np.diff(filtered))
+    return filtered
+plotAll(traces, filt=filt, x=30, superpose_trans=True, trans_positions=trans_positions_p1)
+# %%% fit each
+
+fits = np.full((12, 2), np.nan, dtype=float)
+fit_lines = np.full((12, 151), np.nan, dtype=float)
+fig, ax = plt.subplots(figsize=(2,10))
+for i in range(len(trans_positions_p1)):
+    valid_indices = ~np.isnan(trans_positions_p1[i])
+ 
+    filtered_bz_vals = bz_vals[valid_indices]
+    
+    filtered_trans_positions = trans_positions_p1[i][valid_indices]
+    
+    fit_params = np.polyfit(filtered_bz_vals, filtered_trans_positions, 1)
+    fits[i] = fit_params
+    fit_line = np.polyval(fit_params, bz_vals)
+    fit_lines[i] = fit_line
+   
+    factor = 1 #i/32
+    
+    color = plt.gca()._get_lines.get_next_color()
+    ax.plot(bz_vals, fit_line * factor, linestyle='-', marker='', color=color)
+    ax.plot(bz_vals, trans_positions_p1[i] * factor, linestyle='', marker='o', color=color)
+   
+    ax.annotate(f'${fit_params[0]:.6f}*x + {fit_params[1]:3f}$', 
+                 xy=(bz_vals[-1], fit_line[-1]* factor), 
+                 xytext=(bz_vals[-1], fit_line[-1]* factor),
+                 fontsize=8)
+ax.set_xlabel('P1 (V)')
+ax.set_ylabel('Bz (T)')
+ax.grid()
+# %%% deltas on fit
+
+deltas = np.full((11, 151), np.nan, dtype=float)
+
+fig, ax = plt.subplots()
+for i in range(len(fit_lines)-1):
+    #delta = fit_lines[i+1] - fit_lines[i]
+    delta = trans_positions_p1[i+1] - trans_positions_p1[i]
+    deltas[i] = delta
+    
+    fit_params = np.polyfit(bz_vals, delta, 1)
+    
+    factor=0.05
+    # ax.plot(bz_vals, delta - delta[0] + i*factor, linestyle='-', marker='')
+    ax.plot(bz_vals, delta + factor*i, linestyle='', marker='o')
+    
+    ax.annotate(f'{i+1}->{i+2}', 
+                  xy=(0.1, ua.firstNonNanValue(delta) + factor*i), 
+                  xytext=(-0.20, ua.firstNonNanValue(delta) + factor*i),
+                  fontsize=8)
+    
+ax.set_ylabel('$\Delta$ P1 (V) (courbes décalées)')
+ax.set_xlabel('Bz (T)')
+
+#fig.legend()
+ax.grid()
+
+
+# %%% test
+def shiftLinesBy(img, id_shift):
+    new_img = np.full( (img.shape[0], (img.shape[1]+1)*id_shift), np.nan, dtype=float)
+    for id_line in range(len(img)):
+        new_img[id_line][(id_line*id_shift):] = img[id_line]
+    return new_img
