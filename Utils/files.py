@@ -9,6 +9,7 @@ from pyHegel.instruments_base import BaseInstrument, BaseDevice
 from typing import List
 
 from . import analyse as a
+from . import analyse as ua
 from . import plot as p
 from . import utils as uu
 
@@ -215,6 +216,9 @@ def showfile2dim(data, x_label='', y_label='', title='', cbar=False,
     titles is the result of readfileNdim[1]
     transpose: False | True (data and axes)
     """
+    if isinstance(data, str):
+        file = data
+        data = readfileNdim(file, return_raw=True)[0]
     if is_alternate:
         img = a.alternate(data[out_id]).T
     else:
@@ -227,8 +231,11 @@ def showfile2dim(data, x_label='', y_label='', title='', cbar=False,
     y_axis = data[1,0]
     x_axis = data[0][::,1]
     x_axis = _completeAxis(x_axis)
+    if x_axis[-1] < x_axis[0]:
+        img = ua.flip(img)
+        print('flipped')
     
-    imshow_kw = dict(x_axis=[x_axis[0], x_axis[-1]], y_axis=[y_axis[0], y_axis[-1]], 
+    imshow_kw = dict(x_axis=[np.nanmin(x_axis), np.nanmax(x_axis)], y_axis=[np.nanmin(y_axis), np.nanmax(y_axis)], 
                      x_label=x_label, y_label=y_label, title=title, cbar=cbar,
                      **kwargs_for_imshow)
 
