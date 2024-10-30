@@ -26,8 +26,6 @@ matplotlib.rcParams['figure.dpi'] = 100
 
 # Garbage
 import gc
-ramasse_miette = gc.collect
-
 # Notify-run
 try:
     from notify_run import Notify

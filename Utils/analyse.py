@@ -473,7 +473,7 @@ def autoClassifyAndRemoveBlips(array, filter_sigma=2, width_tolerance=0, promine
     dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
     th = findClassifyingThreshold(dg_params, 'min')
     classified = classify(array, th)
-    classified_cleaned = np.remove_small_blips_2d(classified, tolerance=width_tolerance)
+    classified_cleaned = removeSmallSegments_lbl(classified, tolerance=width_tolerance)
     
     return classified_cleaned
 
@@ -485,8 +485,8 @@ def blockade_probability(read1, read2, threshold=None, tolerance=20):
     returns the blockade probability
     """
     if threshold is None:
-        read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
-        read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        read1clas = autoClassifyAndRemoveBlips(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        read2clas = autoClassifyAndRemoveBlips(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
         if isinstance(read1clas, bool) or isinstance(read2clas, bool):
             return np.nan, 0, 0
     else:
@@ -517,8 +517,8 @@ def flip_probability(read1, read2, threshold=None, tolerance=20):
     returns the flip probability
     """
     if threshold is None:
-        read1clas = autoClassify(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
-        read2clas = autoClassify(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        read1clas = autoClassifyAndRemoveBlips(read1, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
+        read2clas = autoClassifyAndRemoveBlips(read2, width_tolerance=tolerance, prominence_factor=0.04, verbose=0)
         if isinstance(read1clas, bool) or isinstance(read2clas, bool):
             return np.nan, 0, 0
     else:
