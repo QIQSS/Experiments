@@ -71,8 +71,8 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 0.93, 0.045, 0.024 #max: 0.045, 0.024 
-valueStep, deltaStep, nbStep = 0.68, 0.010, 101
+valueRamp, deltaRamp, timeRamp = 0.85, 0.020, 0.015 #max: 0.045, 0.024 
+valueStep, deltaStep, nbStep = 0.61, 0.015, 101
 
 
 sync_time_after_ramp = 0.01
@@ -116,7 +116,7 @@ def vmget():
     data = acquire(timeRamp)
     if ramp_direction == 'down':
         data = np.flip(data)
-    data = ua.gaussian(data, 1)
+    data = ua.gaussian(data, 2)
     #data = ua.lfilter(data, 1)
     return data
 
@@ -129,6 +129,7 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, ylabel=f"{ramp_on} ramp {ramp_directio
 img = vm.data_buffer[0].T
 up.imshow(img, x_label=step_on, y_label=ramp_on, x_axis=vm.x, y_axis=vm.y, cbar=False,
           title='zone psb video mode', filename='transition_psb', save=1, metadata=dict(pulseRamp=str(pulseRamp)), path=LOG_PATH_HL)
+
 
 
 
