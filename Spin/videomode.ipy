@@ -26,7 +26,7 @@ from Videomode.VideoModeWindow import VideoModeWindow, SweepAxis
 
 awg = instruments.tektronix.tektronix_AWG('USB0::0x0699::0x0503::B030793::0')
 gain = awg.gain = 1/(0.02512)*0.4
-awg_sr = 20e4
+awg_sr = 20e3
 channel = {'P1':1, 'P2':2}
 send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, pad='last', mod=64)
 awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
@@ -71,8 +71,8 @@ shift_function = {'P1': shiftP1, 'P2': shiftP2}
 ###### settings
 ramp_on = 'P1'; step_on = 'P2' # 'P1' | 'P2'
 
-valueRamp, deltaRamp, timeRamp = 0.85, 0.020, 0.015 #max: 0.045, 0.024 
-valueStep, deltaStep, nbStep = 0.61, 0.015, 101
+valueRamp, deltaRamp, timeRamp = 1.185, 0.020, 0.015 #max: 0.045, 0.024 
+valueStep, deltaStep, nbStep = 0.89, 0.015, 101
 
 
 sync_time_after_ramp = 0.01
@@ -189,3 +189,83 @@ def vmget():
     return data
 
 vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,xlabel="time",axes_dict={'x': acq_time})
+
+
+# %% VM 2d
+
+###### settings
+ramps_on = 'P1'; steps_on = 'P2' # 'P1' | 'P2'
+
+valueRamp, deltaRamp, timeRamp = 0.91, 0.020, 0.005 #max: 0.045, 0.024 
+valueStep, deltaStep, nbStep = 1.165, 0.020, 151
+
+ramp_direction = 'up' # 'up' | 'down'
+sync_time_after = 0.1
+################
+
+pulseSteps = Pulse(name='steps', shape_comp=True)
+pulseRamps = Pulse(name='ramps', shape_comp=True)
+
+# pulseSteps.add(sync_time_after, mark=False)
+# pulseRamps.add(sync_time_after, mark=False)
+
+steps = np.linspace(-deltaStep, +deltaStep, nbStep, endpoint=True)
+steps[0::2] = -steps[0::2]
+for i in range(len(steps)):
+    pulseSteps.add(timeRamp, steps[i])
+    pulseRamps.addRamp(timeRamp, {'up': -1, 'down': +1}[ramp_direction]*deltaRamp,
+                             {'up': +1, 'down': -1}[ramp_direction]*deltaRamp, mark=True)
+pulseSteps.add(sync_time_after, mark=False)
+pulseRamps.add(sync_time_after, mark=False)
+#pulseSteps.plot(pulseRamps, no_shape_comp=False)
+
+# send to awg
+ui.awgBTrigMode(awg)
+#ui.awgContMode(awg)
+send(pulseSteps, channel[steps_on])  # channel 1 (2) on P1 (P2)
+awg.output_en.set(True)
+send(pulseRamps, channel[ramps_on])
+awg.output_en.set(True)
+send(pulseSteps, ch=3)
+awg.output_en.set(True)
+awg.run(True)
+
+ats.acquisition_length_sec.set(timeRamp*nbStep)
+ats.sample_rate.set(100000)
+ats.nbwindows.set(1)
+ats.ConfigureBoard()
+nbpts_expected = int(ats.sample_rate.get()*timeRamp*nbStep)
+
+set_function[steps_on](valueStep)
+set_function[ramps_on](valueRamp)
+
+
+def vmget2d():
+    data = acquire(timeRamp*nbStep)
+    
+    #data = ats.fetch_all.get()[2]
+    if len(data) > nbpts_expected:
+        data = data[:nbpts_expected]
+    elif len(data) < nbpts_expected:
+        data = np.concatenate((data, np.full(nbpts_expected-len(data), data[-1])))
+        
+    data2d = data.reshape((nbStep,-1))
+    
+    data2d[0::2] = np.flip(data2d[0::2],axis=0)
+    #imshow(data2d)
+    data2d = ua.gaussianlbl(data2d,2)
+    return data2d
+    # if ramp_direction == 'down':
+    #     data = np.flip(data)
+    # data = ua.gaussian(data, 2)
+    # #data = ua.lfilter(data, 1)
+    # return data
+
+vm = VideoModeWindow(fn_get=vmget2d, dim=2, ylabel=f"P1 ramp {ramp_direction} (V)", xlabel='P2 steps (V)', sec_between_frame=0.08,
+                     fn_yshift=shift_function[ramps_on], fn_xshift=shift_function[steps_on],
+                     axes_dict={'y': [valueRamp-deltaRamp, valueRamp+deltaRamp],'x': [valueStep-deltaStep, valueStep+deltaStep]})
+
+# %%% save
+img = vm.data_buffer[0].T
+up.imshow(img, x_label=steps_on, y_label=ramps_on, x_axis=vm.x, y_axis=vm.y, cbar=False, title='zone psb video mode', filename='transition_psb', save=1, metadata=dict(pulseRamps=str(pulseRamps),pulseSteps=str(pulseSteps)), path=LOG_PATH_HL)
+
