@@ -1,3 +1,4 @@
+from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSignal, QThread
 from PyQt5.QtWidgets import QMainWindow, QPushButton, \
     QTreeWidget, QSplitter, QVBoxLayout, QHBoxLayout, \
@@ -200,6 +201,17 @@ class VideoModeWindow(QMainWindow):
         print("closed")
         self.close()
         event.accept()
+    
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == QtCore.Qt.Key_Down or key == QtCore.Qt.Key_S:
+            self.yShift(-1)
+        elif key == QtCore.Qt.Key_Up or key == QtCore.Qt.Key_W:
+            self.yShift(1)
+        elif key == QtCore.Qt.Key_Left or key == QtCore.Qt.Key_A:
+            self.xShift(-1)
+        elif key == QtCore.Qt.Key_Right or key == QtCore.Qt.Key_D:
+            self.xShift(1)
     
     def _doAvg(self, data, store_in_buffer=True):
         # this is called by plot and imgplot.

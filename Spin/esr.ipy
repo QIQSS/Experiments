@@ -32,12 +32,8 @@ gain = awg.gain = 1/(0.02512)*0.4
 awg_sr = 10e4
 channel = {'P1':1, 'P2':2}
 send = lambda pulse, ch, awg_sr=awg_sr, run_after=False: ui.sendSeqToAWG(awg, pulse, channel=ch, run_after=run_after, awg_sr=awg_sr, pad='last')
-awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
-awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')
-awg.write('SOURce3:RMODe TRIGgered'); awg.write('SOURce3:TINPut BTrigger')
-awg.write('SOURce1:DAC:RESolution 15') # 15 bits + 1 marker
-awg.write('SOURce2:DAC:RESolution 15')
-awg.write('SOURce3:DAC:RESolution 15')
+ui.awgBTrigMode(awg)
+ui.awgEnChannels(awg)
 # debug: awg.clear()
 
 ats = instruments.ATSBoard(systemId=1, cardId=1)
@@ -78,93 +74,85 @@ awg2.out_en.set(True)
 # %% pulse  A - B - C - D
 ##### settings
 #   (P1  ,  P2)
-detuning_slope = -1/8
+detuning_slope = -1/1
 
-p1_40 = 0.04
+p1_40 = 0.025
 p1_read = 0
-p1_31 =  -0.01
+p1_31 =  -0.015
+p1_40_low = 0.010
 
 _init = (0, 0)
 _read = (p1_read , p1_read*detuning_slope)
 _31 = (p1_31, p1_31*detuning_slope )
 _40 = (p1_40, p1_40*detuning_slope )
+_40_low = (p1_40_low, p1_40_low*detuning_slope)
 
-A, tA = _40, 0.000_001
-B, tB = _31, 0.000_1
-C, tC = _read, 0.03
+A, tA = _40, 0.005
+B, tB = _31, 0.005
+C, tC = _read, 0.020
 D, tD = _31, 0.00
 E, tE = _read, 0.00
 
-tinit = 0.05 # min around 0.015
+tinit = 0.22 # min around 0.015
 
-trampAB = 0.000_0
-trampBC = 0.001_1
-trampCD = 0.00
+trampAB = 0.000_0 # 0.055 -> 
+trampBC = 0.000 # vm is ~5m
+trampCD = 0
 trampDE = 0.00
 
 tdrive = 0.000_0
 
 
 pulseP1, pulseP2 = Pulses.ABCDE.genABCDE([A,B,C,D,E], [tA,tB,tC,tE,tD], [trampAB,trampBC,trampCD,trampDE], tinit=tinit)
+pulseSR = Pulses.ABCDE.genDrive([A,B,C,D,E], [tA,tB,tC,tE,tD], [trampAB,trampBC,trampCD,trampDE], tinit=tinit, tdrive=tdrive)
 # vm
-base_level = {'P1': 1.195, 'P2': 0.657}
+base_level = {'P1': 1.21, 'P2': 1.16}
 filt = 2 # gaussian filter
 
-##############
-# pulseSR = Pulse(name='SR', shape_comp=False)
-# pulseSR.add(tinit)
-# pulseSR.add(tA)
-# pulseSR.add(trampAB)
-# pulseSR.add(tB/2-tdrive/2)
-# pulseSR.addRamp(tdrive, -.75/gain, +.75/gain, mark=True)
-# pulseSR.add(tB/2-tdrive/2)
-# pulseSR.add(trampBC)
-# pulseSR.add(tC)
-# pulseSR.add(trampCD)
-# pulseSR.add(tD)
-# pulseSR.add(trampDE)
-# pulseSR.add(tE)
 
-#pulseP2.plot(pulseP1)
+#pulseP2.plot(pulseP1, pulseSR)
 
-pulseP1.plot(pulseP2, wide='wider', relative_time=False, no_shape_comp=True)
+pulseP1.plot(pulseP2, pulseSR, wide='wider', relative_time=False, no_shape_comp=True)
 points = [(0, x+base_level['P1'],y+base_level['P2']) for x,y in [A, B, C, D, E]]
 points += [(1, base_level['P1'],base_level['P2'])]
-imshow('D:/QBB16_SD11b_3/Hlab/20241030/20241030-102715-transition_psb', scatter_points=points, scatter_points_label='id')
+imshow('D:/QBB16_SD11b_3/Hlab/20241106/20241106-110620-transition_psb', scatter_points=points, scatter_points_label='id')
 genPWLFile(pulseP1, awg_sr, 'psb_pulse.txt')
 
 #%%% vm
+acq_time_add = 0
+
 acq_time = pulseP1.getMarkDuration(awg_sr)
-ats.acquisition_length_sec.set(acq_time)
+ats.acquisition_length_sec.set(acq_time + acq_time_add)
 ats.nbwindows.set(1)
 
 ui.awgBTrigMode(awg)
 send(pulseP1, 1)
 send(pulseP2, 2, run_after=True)
-#send(pulseSR, 3, run_after=True)
+send(pulseSR, 3, run_after=True)
  
 rhP1.ramp.set(base_level['P1'])
 rhP2.ramp.set(base_level['P2'])
 
 def vmget():
+    #wait(0.1)
     data = acquire(acq_time)
     data = ua.gaussian(data, filt) if filt else data
     return data
 
-vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,xlabel="time",axes_dict={'x': acq_time})
+vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500, xlabel="time",axes_dict={'x': acq_time})
 #vm = VideoModeWindow(fn_get=vmget, dim=1, ysweep=sweep,xlabel="time",axes_dict={'x': acq_time})
 #img = vm.data_buffer[0].T
 #up.imshow(img, x_label='time', y_label='count', x_axis=acq_time, cbar=False, title='vm pulse', filename='pulse_sequence', save=1,path=LOG_PATH_HL)
 
 
 
-# %% sweep temps de rampe A-B
+# %% sweep temps de rampe
 
-meas = um.Measure(LOG_PATH, '20-11_trampBC', metadata=
-                  dict(champs=.2, base_level = {'P1': 1.195, 'P2': 0.657}, tr='D:/QBB16_SD11b_3/Hlab/20241030/20241030-102715-transition_psb'))
+meas = um.Measure(LOG_PATH, '20-11_trampAB2', metadata=
+                  dict(champs=.2, base_level = base_level, tr='D:/QBB16_SD11b_3/Hlab/20241101/20241101-160851-transition_psb'))
 
-BC_ramps = np.linspace(0,0.010_0, 501)
-for trampBC in tqdm(BC_ramps):
+AB_ramps = np.linspace(0,0.040_0, 501)
+for trampAB in tqdm(AB_ramps):
     pulseP1, pulseP2 = Pulses.ABCDE.genABCDE([A,B,C,D,E], [tA,tB,tC,tE,tD], [trampAB,trampBC,trampCD,trampDE], tinit=tinit)
 
     acq_time = pulseP1.getMarkDuration(awg_sr)
@@ -173,13 +161,12 @@ for trampBC in tqdm(BC_ramps):
     send(pulseP1, 1)
     send(pulseP2, 2, run_after=True)
     
-    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=1000, xlabel="time",axes_dict={'x': acq_time}, play=True, take_focus=True)
+    vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=800, xlabel="time",axes_dict={'x': acq_time}, play=True, take_focus=True, pause_after_one=True)
     img = vm.data_buffer[0].T
     
-    meas.saveArray(img, metadata=dict(x_axis=acq_time, trampBC=trampBC, pulseP1=pulseP1, pulseP2=pulseP2))
+    meas.saveArray(img, metadata=dict(x_axis=acq_time, trampAB=trampAB, pulseP1=pulseP1, pulseP2=pulseP2))
     
     vm.close()
-# vm
 
 
 #%% vm
@@ -207,8 +194,8 @@ vm = VideoModeWindow(fn_get=vmget, dim=1, wrap_at=500,xlabel="time",axes_dict={'
 
 
 
-# %% pulse multi sequence
-nb_pulse = 600
+# %% get multi sequence
+nb_pulse = 1000
 ui.awgContMode(awg)
 ats.sample_rate.set(50_000)
 ats.nbwindows.set(nb_pulse)
@@ -244,37 +231,53 @@ freqs = ua.arange(15e9, 19e9, 12e6, True); print(len(freqs))
 
 points = freqs
 
+# %% sweep drive
 
-name = '31r31r_nuit2'
-nb_get = 1
-ampl = -15
-champs = 0.589
-tdrive = 0.000_4
-chirp = 32e6
-description = """"""
+points = np.linspace(5.3e9, 5.9e9, 701)
+points = np.concatenate((np.array([0]), points))
+
+name = '20-11_drive3'
+ampl = -18#-22 finalement
+champs = 0.2
+chirp = 4e6
+base_level = {'P1': 1.241, 'P2': 0.8375}
+description = """regime super isolé, B1=0.1, B2=-1V"""
+
 
 
 
 ########
 meas = um.Measure(LOG_PATH, name, metadata=
-                  dict(nb_traces=nb_get, tdrive=tdrive, chirp=chirp,
+                  dict(chirp=chirp,
                        ampl=ampl, description=description,
+                       transition='D:/QBB16_SD11b_3/Hlab/20241031/20241031-174759-transition_psb', 
+                       pulseP1=pulseP1, pulseP2=pulseP2, pulseSR=pulseSR,
+                       base_level = base_level,
                        champs=champs, acq_len=ats.acquisition_length_sec.get()))
+
 psg.rf_en.set(True)
 psg.mod_fm_en.set(True) # !!! always True, even when no chirp: needed for trigger.
 psg.ampl.set(ampl)
 psg.write('FM1:DEViation {freq_deviation}'.format(freq_deviation=chirp))
 awg2.pulse_width.set(tdrive)
  
-for i, f in tqdm(enumerate(points), total=(len(points))):
+for i, f in enumerate(tqdm(points)):
     
     #awg2.pulse_width.set(tdrive)
-        
+    if f == 0: 
+        psg.rf_en.set(False)
+        acq = get()
+        meas.saveArray(acq, metadata=dict(x_axis=acq_time, freq=f))
+        vm.close()
+        psg.rf_en.set(True)
+        continue
+
     psg.freq_cw.set(f)
-    acq = get(nb_get)
+    acq = get()
     
     meas.saveArray(acq, metadata=dict(x_axis=acq_time, freq=f))
     vm.close()
+
 
 # %% sweep power
 # 48 000 traces par heure

@@ -62,6 +62,11 @@ def sendSeqToAWG(awg, sequence, gain=None, channel=1, awg_sr=32e4,
         print(f"Warning: volt amplitude with gain above 1.5V: {amp}V")
         return True
 
+def awgEnChannels(awg):
+    awg.write('OUTput1:STATe 1')
+    awg.write('OUTput1:STATe 2')
+    awg.write('OUTput1:STATe 3')
+
 def awgBTrigMode(awg):
     awg.write('SOURce1:RMODe TRIGgered'); awg.write('SOURce1:TINPut BTrigger')
     awg.write('SOURce2:RMODe TRIGgered'); awg.write('SOURce2:TINPut BTrigger')

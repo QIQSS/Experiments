@@ -48,3 +48,49 @@ def genABCDE(abcde_pos, abcde_time, abcde_ramp, tinit=0.05, plot=False):
     if plot: pulseP2.plot(pulseP1)
     
     return pulseP1, pulseP2
+
+def genDrive(abcde_pos, abcde_time, abcde_ramp, tdrive, drive_on='B', gain=15.923566878980893, tinit=0.05, plot=False):
+    """ only on B for now """
+    A, B, C, D, E = abcde_pos
+    tA, tB, tC, tD, tE = abcde_time
+    trampAB, trampBC, trampCD, trampDE = abcde_ramp
+    
+    pulseSR = Pulse(name='SR', shape_comp=False)
+    pulseSR.add(tinit)
+    pulseSR.add(tA)
+    pulseSR.add(trampAB)
+    pulseSR.add(tB/2-tdrive/2)
+    pulseSR.addRamp(tdrive, -1.75/gain, +1.75/gain, mark=True)
+    pulseSR.add(tB/2-tdrive/2)
+    pulseSR.add(trampBC)
+    pulseSR.add(tC)
+    pulseSR.add(trampCD)
+    pulseSR.add(tD)
+    pulseSR.add(trampDE)
+    pulseSR.add(tE)
+    
+    
+    return pulseSR
+
+def genDriveMarkerPulse(abcde_pos, abcde_time, abcde_ramp, tdrive, drive_on='B', gain=15.923566878980893, tinit=0.05, plot=False):
+    """ only on B for now """
+    A, B, C, D, E = abcde_pos
+    tA, tB, tC, tD, tE = abcde_time
+    trampAB, trampBC, trampCD, trampDE = abcde_ramp
+    
+    pulseSR = Pulse(name='SR', shape_comp=False)
+    pulseSR.add(tinit)
+    pulseSR.add(tA)
+    pulseSR.add(trampAB)
+    pulseSR.add(tB/2-tdrive/2)
+    pulseSR.add(tdrive, mark=True)
+    pulseSR.add(tB/2-tdrive/2, mark=True)
+    pulseSR.add(trampBC, mark=True)
+    pulseSR.add(tC, mark=True)
+    pulseSR.add(trampCD, mark=True)
+    pulseSR.add(tD, mark=True)
+    pulseSR.add(trampDE, mark=True)
+    pulseSR.add(tE, mark=True)
+    
+    
+    return pulseSR
