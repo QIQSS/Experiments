@@ -22,7 +22,12 @@ def try_(function_no_arg, fallback):
         return fallback
 
 def fname():
-    """ return the name of the function from which called """
+    """ return the name of the function from which called
+    def f():
+        print(fname()) -> <f>
+        
+    I don't remember why this is useful but it exists.
+    """
     import inspect
     frame = inspect.currentframe()
     caller_frame = frame.f_back
@@ -30,13 +35,17 @@ def fname():
     return str(f"<{function_name}>")
 
 def qdict(*args):
-    return {var_name: locals()[var_name] for var_name in args if var_name in locals()}
-
+    """ quick dict, give only the vals, keys are str(vals)
+    return dict(str(arg)=arg)
+    all args must be  string-able else its undefined behavior
+    """
+    return {str(arg):arg for arg in locals()['args']}
 
 class customDict(dict):
     """ custom version of a dictionnary
     
     new things:
+        can get and set with attributes.
         method rget: recursive get, return first val with key in child dicts
         
         keys as attributes: customDict.key -> customDict['key']
@@ -75,6 +84,9 @@ class customDict(dict):
     
 
 class ModuloList(list):
+    """ a list with circular indexes 
+    inherit from list so it has all the normal methods
+    """
     def __getitem__(self, index):
         if isinstance(index, int):
             index %= len(self)
@@ -85,10 +97,8 @@ class ModuloList(list):
             index %= len(self)
         super().__setitem__(index, value)
 
-import sys
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
-from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, QToolBar
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout
 
 class mplqt(QMainWindow):
     """ to force a fig to be interactive even if %matplotlib is set to inline
@@ -124,6 +134,7 @@ class mplqt(QMainWindow):
 from PyQt5.QtCore import QThread
 import time as timemodule
 class delayExec(QThread):
+    """ run 'fn' in a thread after some 'time' """
     def __init__(self, time, fn):
         super().__init__()
         self.fn = fn
@@ -132,3 +143,18 @@ class delayExec(QThread):
     def run(self):
         timemodule.sleep(self.time)
         self.fn()
+        
+        
+def enumtq(*args):
+    """ faster tqdm enumerate, and no need for import """
+    from tqdm import tqdm
+    for item in enumerate(tqdm(*args)):
+        yield item
+
+def copy(arg):
+    from pyperclip import copy
+    copy(arg)
+    
+def paste():
+    from pyperclip import paste
+    return paste()

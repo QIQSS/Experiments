@@ -137,7 +137,7 @@ def loadNpz(name, autosave_on_edit=True):
     if name.startswith('smb://bob.physique.usherbrooke.ca/'):
         name = name.replace('smb://bob.physique.usherbrooke.ca/', 
                      '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=')
-
+    print(name)
     npzfile = np.load(name, allow_pickle=True)
     ret = {}
     for key in npzfile:
@@ -149,6 +149,11 @@ def loadNpz(name, autosave_on_edit=True):
             ret[key] = obj
 
     return NpzDict(ret, name, autosave_on_edit)
+
+def resaveArray(name, array):
+    npz = loadNpz(name)
+    npz.array = array
+    npz.save()
 
 def _makeDateFolder(path):
     date = timemodule.strftime("%Y%m%d")
@@ -162,6 +167,9 @@ def saveToNpz(path, filename, array, metadata={},
     """ Save array to an npz file.
     metadata is a dictionnary, it can have pyHegel instruments as values: the iprint will be saved.
     """
+    if path.startswith('smb://bob.physique.usherbrooke.ca/'):
+        path = path.replace('smb://bob.physique.usherbrooke.ca/', 
+                     '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=')
     if path != '' and not path.endswith(('/', '\\')):
         path += '/'
     if make_date_folder: path = _makeDateFolder(path)
