@@ -1,0 +1,467 @@
+# %% init
+%cd $LS_PATH
+
+from Utils import analyse as ua
+from Utils import files as uf
+from Utils import plot as up
+from Utils import utils as uu
+from Utils import measure as um
+
+from Utils.plot import imshow, qplot
+from tqdm import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+
+from scipy.signal import find_peaks
+# %% t_ramp experiment
+""" 1, avec t_2,0 = 0.
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_trampAB')
+
+# %%% analyse
+def pl(file): # compute the blockade probability
+    npz = uf.loadNpz(file)
+    # extract useful data
+    x_axis = np.linspace(0, npz.rget('x_axis'), npz.array.shape[1])
+    tramp = npz.rget('trampAB')
+    x_slice = slice(ua.findNearest(x_axis, tramp, 'id'), -10)
+    img = npz.array[:,x_slice]
+    
+    # calssify and compute
+    img_class = ua.autoClassifyAndRemoveBlips(img)
+    
+    res = ua.countHighLowTrace(img_class, high=1, low=0)
+    return tramp, res['low_trace_prop'], res['exclude_trace_prop']
+
+res = np.empty((len(points), 3), dtype=float)
+for i, f in uu.enumtq(points):
+    res[i] = pl(f)
+  
+# meas_file = uf.resaveArray(meas, res)
+# res = uf.loadNpz(meas).array
+    
+# %%% plot
+mplil()
+fig, ax = plt.subplots()
+ax.plot(res[:,0]*1e3, 1-(res[:,1]/100), linestyle=' ', marker='o')
+#ax.plot(res[:,0]*1e3, res[:,2]/100, linestyle=' ', marker='o')
+ax.set_xlabel('t_ramp A->B (ms)')
+ax.set_ylabel('(1,1) probability')
+ax.grid()
+
+# %% t_ramp experiment
+""" t_ramp B->C, avec A->B a zéro
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_trampBC')
+
+# %%% analyse
+def pl(file): # compute the blockade probability
+    npz = uf.loadNpz(file)
+    # extract useful data
+    x_axis = np.linspace(0, npz.rget('x_axis'), npz.array.shape[1])
+    tramp = npz.rget('trampBC')
+    x_slice = slice(ua.findNearest(x_axis, tramp, 'id'), -400)
+    img = npz.array[:,x_slice]
+    
+    # calssify and compute
+    img_class = ua.autoClassifyAndRemoveBlips(img)
+    
+    res = ua.countHighLowTrace(img_class, high=1, low=0)
+    return tramp, res['low_trace_prop'], res['exclude_trace_prop']
+
+res = np.empty((len(points), 3), dtype=float)
+for i, f in uu.enumtq(points):
+    res[i] = pl(f)
+  
+# meas_file = uf.resaveArray(meas, res)
+# res = uf.loadNpz(meas).array
+
+# %%% plot
+mplil()
+fig, ax = plt.subplots()
+ax.plot(res[:,0]*1e3, 1-(res[:,1]/100), linestyle=' ', marker='o')
+ax.plot(res[:,0]*1e3, res[:,2]/100, linestyle=' ', marker='o')
+ax.set_xlabel('t_ramp B->C (ms)')
+ax.set_ylabel('(1,1) probability')
+ax.grid()
+
+# %% drive 
+""" drive sans rampe
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_drive1')
+npz_meas = uf.loadNpz(meas)
+pulseP1 = npz_meas.metadata.get('pulseP1')
+
+# %%% analyse
+saut_de_charge = [16]
+def pl(file, i=0): # compute the blockade probability
+        
+    npz = uf.loadNpz(file)
+    # extract useful data
+    freq, x_axis = npz.metadata.get('freq'), npz.metadata.get('x_axis')
+    x_axis = np.linspace(0, x_axis, npz.array.shape[1])
+    x_slice = slice(ua.findNearest(x_axis, 0.0002+0.0002, 'id'), -200)
+    img = npz.array[:,x_slice]
+    
+    
+    if i in saut_de_charge:
+        return freq, np.nan, np.nan, np.nan
+    
+    # correct for charge jumps
+    means = [np.mean(trace) for trace in img]
+    fit = ua.ffit(means)
+    img_correct = np.array([img[i]-fit[i] for i in range(len(img))])
+    
+    # find threshold
+    bins, hist = ua.histogram(img_correct, bins=100, return_type='all')
+    peaks, count = [], 1
+    while count < 10:
+        if len(peaks)== 2 or len(peaks) == 1:
+            break
+        hist_filt = ua.gaussian(hist, sigma=count)
+        # heigh: min max
+        peaks, prop = find_peaks(hist_filt, height=[100,], distance=10)
+        count += 1
+        
+    if len(peaks) != 2:
+        print('not 2 peaks')
+        return freq, np.nan, np.nan, np.nan
+
+
+    #qplot(hist, bins, title=i)
+    #qplot(hist_filt, bins, vline=ua.multiget(bins,peaks), title=i)
+    
+    #qplot(hist_filt[min(peaks):max(peaks)])
+    th = bins[ np.argmin(hist_filt[min(peaks):max(peaks)]) + min(peaks)]
+    
+    img_class = ua.classify(img_correct, th)
+    img_class_clean = ua.removeSmallSegments_lbl(img_class, 10)
+
+    
+    res = {"low_trace_count": 0, "high_trace_count": 0}
+    for trace in img_class_clean:
+        if ua.allequal(trace, 0):
+        # if np.sum(trace == 1) / len(trace) < 0.985:
+            res["low_trace_count"] += 1
+        else:
+            res["high_trace_count"] += 1
+    
+    # probability
+    res["low_trace_prop"] = res["low_trace_count"] / len(img_class)
+    res["high_trace_prop"] = res["high_trace_count"] / len(img_class)
+    
+    return freq, res["low_trace_prop"], res["high_trace_prop"], th
+
+res = np.full((len(points), 4), np.nan, dtype=float)
+
+for i, f in uu.enumtq(points[:]):
+    res[i] = pl(f,i)
+
+# meas_file = uf.resaveArray(meas, res)
+# res = uf.loadNpz(meas).array
+
+# %%% plot
+# mplil()
+fig, ax = plt.subplots()
+
+file = res
+ax.plot(res[:,0]*1e-9, res[:,1], linestyle=' ', marker='o')
+#ax.plot(res[:,0]*1e3, res[:,2]/100, linestyle=' ', marker='o')
+ax.set_xlabel('f_drive (Ghz)')
+ax.set_ylabel('blocked probability')
+ax.grid()
+
+# %% drive 2
+""" drive sans rampe
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_drive2')
+npz_meas = uf.loadNpz(meas)
+pulseP1 = npz_meas.metadata.get('pulseP1')
+
+# %%% analyse
+saut_de_charge = []
+def pl(file, i=0): # compute the blockade probability
+        
+    npz = uf.loadNpz(file)
+    # extract useful data
+    freq, x_axis = npz.metadata.get('freq'), npz.metadata.get('x_axis')
+    x_axis = np.linspace(0, x_axis, npz.array.shape[1])
+    x_slice = slice(ua.findNearest(x_axis, 0.0002+0.0002, 'id'), -10)
+    img = npz.array[:,x_slice]
+    
+    
+    if i in saut_de_charge:
+        return freq, np.nan, np.nan, np.nan
+    
+    bins, hist = ua.histogram(img, bins=100, return_type='all')
+    peaks, count = [], 1
+    while count < 10:
+        if len(peaks)== 2 or len(peaks) == 1:
+            break
+        hist_filt = ua.gaussian(hist, sigma=count)
+        # heigh: min max
+        peaks, prop = find_peaks(hist_filt, height=[100,], distance=10)
+        count += 1
+        
+    if len(peaks) != 2:
+        print('not 2 peaks')
+        return freq, np.nan, np.nan, np.nan
+
+
+    #qplot(hist, bins, title=i)
+    #qplot(hist_filt, bins, vline=ua.multiget(bins,peaks), title=i)
+    
+    #qplot(hist_filt[min(peaks):max(peaks)])
+    th = bins[ np.argmin(hist_filt[min(peaks):max(peaks)]) + min(peaks)]
+    
+    img_class = ua.classify(img, th)
+    img_class_clean = ua.removeSmallSegments_lbl(img_class, 10)
+
+    
+    res = {"low_trace_count": 0, "high_trace_count": 0}
+    for trace in img_class:
+        if np.sum(trace == 1) / len(trace) < 0.90 and trace[0]==1:
+            res["low_trace_count"] += 1
+        else:
+            res["high_trace_count"] += 1
+    
+    # Calculate proportion
+    res["low_trace_prop"] = res["low_trace_count"] / len(img_class)
+    res["high_trace_prop"] = res["high_trace_count"] / len(img_class)
+    
+    return freq, res["low_trace_prop"], res["high_trace_prop"], th
+
+res = np.empty((len(points), 4), dtype=float)
+
+for i, f in uu.enumtq(points):
+    res[i] = pl(f,i)
+
+# meas_file = uf.resaveArray(meas, res)
+# res = uf.loadNpz(meas).array
+
+# %%% plot
+# mplil()
+fig, ax = plt.subplots()
+
+file = res
+ax.plot(res[:,0]*1e-9, res[:,1], linestyle=' ', marker='o')
+#ax.plot(res[:,0]*1e3, res[:,2]/100, linestyle=' ', marker='o')
+ax.set_xlabel('f_drive (Ghz)')
+ax.set_ylabel('blocked probability')
+ax.grid()
+
+# %% drive 3
+""" drive sans rampe
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_drive3')
+npz_meas = uf.loadNpz(meas)
+pulseP1 = npz_meas.metadata.get('pulseP1')
+
+
+
+# %% t_ramp AB2
+""" sweep A->B
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_trampAB2')
+# imshow(points[393]) perte de régime apres 393 points.
+# points = points[:393] 
+# for point in tqdm(points):
+#     npz = uf.loadNpz(point)
+#     if len(npz.array[0]) > 10000:
+#         print('downsampling')
+#         npz.array = npz.array[:,::2]
+#         npz.save()
+# %%% prepa
+meas_npz = uf.loadNpz(meas)
+tr_bob = LOG_BOB_PATH[:-5] + meas_npz.metadata.get('tr')[16:]
+base_level = meas_npz.rget('base_level')
+pulse_points = [[2, base_level['P1']+0.03, base_level['P2']-0.01 ],
+                [1, base_level['P1']-0.01, base_level['P2']+0.003333333333333333 ],
+                [0, base_level['P1'], base_level['P2']]]
+imshow(tr_bob, scatter_points = pulse_points, scatter_points_label='letter', title='(2,0)-(1,1) transition', x_label='P2 (V)', y_label='P1 (V)')
+# %%% analyse
+
+def pl(file): # compute the blockade probability
+    npz = uf.loadNpz(file)
+    
+    # extract useful data
+    tramp = npz.rget('trampAB')
+    tbefore_read = 0.0022 + tramp + 0.0022
+    
+    x_axis = np.linspace(0, npz.rget('x_axis'), npz.array.shape[1])
+    #imshow(npz, x_axis=x_axis, x_label='pulse time (s)', y_label='iteration', cbar_label='RF-SET (a.u)')
+    x_slice = slice(ua.findNearest(x_axis, tbefore_read, 'id'), -400)
+    
+    x_axis = x_axis[x_slice]
+    img = npz.array[:,x_slice]
+    #imshow(img, x_axis=x_axis[x_slice])
+    
+    # calssify and compute
+    img_class = ua.autoClassifyAndRemoveBlips(img, width_tolerance=400, skip_first_seg=True)
+    #imshow(img_class, x_axis=x_axis[x_slice])
+    #imshow(img_class, x_axis=x_axis[x_slice], x_label='read time (s)', y_label='iteration', cbar_label='RF-SET (a.u)')
+    
+    t1dict = ua.classTracesT1(img_class, x_axis, low_val=1)
+    fall_times = np.array(t1dict.get('high_fall_time'))
+    low_count = t1dict.low
+    
+    #t1 = [np.sum(np.where(fall_times > timebin, True, False)) for timebin in x_axis]
+    #ua.ajustementDeCourbe(ua.f_expDecay, x_axis, t1, p0=[0.02,600], show_plot=False)
+    
+    return tramp, fall_times, low_count, x_axis
+
+
+#res = np.empty((len(points), 3), dtype=float)
+res = []
+for i, f in uu.enumtq(points[300:]):
+    res.append(pl(f))
+  
+meas_npz.metadata['res'] = res
+# meas_file = uf.resaveArray(meas,  res)
+# meas_npz = uf.loadNpz(meas)
+#res = meas_npz.metadata['res'] # [(tramp, fall_times, low_count, x_axis), .... ]
+
+# uf.saveToNpz('smb://bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/20241101-164214-20-11_trampAB2',
+#              'readout_100ms', res)
+# %%% historgram fall time
+
+import matplotlib
+from matplotlib.colors import Normalize
+
+readout_times = [0e-3, 40e-3, 80e-3, 120e-3, 160e-3, 200e-3]
+#readout_times = np.logspace(-3,-1,10)
+norm = Normalize(vmin=0, vmax=len(readout_times))
+colors = [matplotlib.cm.viridis(norm(i)) for i in range(len(readout_times))]
+
+all_the_fall_times = []
+for tramp, fall_times, low_count, x_axis in res:
+    all_the_fall_times += list(fall_times)
+    all_the_fall_times += [0 for _ in range(low_count)]
+
+bins, hist_no_zeros = ua.histogram(np.where(all_the_fall_times!=0., all_the_fall_times, np.nan), bins=200, return_type='all')
+
+fig, ax = plt.subplots()
+ax.plot(bins*1e3, hist_no_zeros, linestyle=' ', marker='o', fillstyle='full', color='grey')
+ax.set_xlabel('transition time while waiting in C (ms)')
+ax.set_ylabel('count')
+ax.grid()
+ax.plot([], label='readout time:', linestyle=' ', marker=' ')
+for readout_time, color in zip(readout_times, colors):
+    ax.vlines(readout_time*1e3, ymin=0, ymax=1, linestyle='--', linewidth=1.5, alpha=0.9, color=color, 
+              label=f"{round(readout_time*1e3,4)} ms",
+              transform=ax.get_xaxis_transform())
+ax.legend(loc='upper right')   
+up.modFig1d(fig, ax)
+fig.set_size_inches([4, 3])
+
+# %%% différent temps de readout
+
+traces = []
+for readout_time in readout_times:
+    prob_points = []
+    for tramp, fall_times, low_count, x_axis in res:
+            
+        count_triplet = np.sum(np.where(fall_times > readout_time, True, False))
+        count_singlet = np.sum(np.where(fall_times < readout_time, True, False)) + low_count
+        total = count_triplet+count_singlet
+        
+        prob_triplet = count_triplet / total
+        prob_singlet = count_singlet / total
+        
+        prob_points.append((tramp, prob_triplet))
+    traces.append(prob_points)
+
+
+
+# %%% plot
+#mplil()
+fig, ax = plt.subplots()
+
+ax.plot([], label='readout time:', linestyle=' ', marker=' ')
+for trace, readout_time, color in list(zip(traces, readout_times, colors))[::]:
+    trace = np.asarray(trace)
+    ax.plot(trace[:,0]*1e3, trace[:,1]*100, 
+            linestyle=' ', marker='o', label=f"{round(readout_time*1e3,10)} ms", 
+            color=color, fillstyle='full', alpha=0.6)
+    #ax.plot(res[:,0]*1e3, res[:,2]/100, linestyle=' ', marker='o')
+ax.set_xlabel('t_ramp A->B (ms)')
+ax.set_ylabel('"blockade" proportion')
+ax.legend(loc='lower right')
+ax.grid()
+up.modFig1d(fig, ax)
+fig.set_size_inches([4, 3])
+
+
+    
+# %%% repartition:
+spike = 34.5e-3
+before_spike, after_spike = [], []
+for fall_time in all_the_fall_times:
+    if fall_time > spike:
+        after_spike.append(fall_time)
+    else:
+        before_spike 
+
+# %% t A
+""" sweep t A
+"""
+# %%% load meas
+meas, points = um.Measure.getFiles(LOG_BOB_PATH, '20-11_tA')
+# %%% prepa
+meas_npz = uf.loadNpz(meas)
+tr_bob = LOG_BOB_PATH[:-5] + meas_npz.metadata.get('tr')[16:]
+base_level = meas_npz.rget('base_level')
+pulse_points = [[2, base_level['P1']+0.03, base_level['P2']-0.01 ],
+                [1, base_level['P1']-0.01, base_level['P2']+0.003333333333333333 ],
+                [0, base_level['P1'], base_level['P2']]]
+imshow(tr_bob, scatter_points = pulse_points, scatter_points_label='letter', title='(2,0)-(1,1) transition', x_label='P2 (V)', y_label='P1 (V)')
+# %%% analyse
+
+def pl(file): # compute the blockade probability
+    npz = uf.loadNpz(file)
+    
+    # extract useful data
+    tramp = npz.rget('tA')
+    tbefore_read = 0.0022 + tramp + 0.0022
+    
+    x_axis = np.linspace(0, npz.rget('x_axis'), npz.array.shape[1])
+    #imshow(npz, x_axis=x_axis, x_label='pulse time (s)', y_label='iteration', cbar_label='RF-SET (a.u)')
+    x_slice = slice(ua.findNearest(x_axis, tbefore_read, 'id'), -400)
+    
+    x_axis = x_axis[x_slice]
+    img = npz.array[:,x_slice]
+    #imshow(img, x_axis=x_axis[x_slice])
+    
+    # calssify and compute
+    img_class = ua.autoClassifyAndRemoveBlips(img, width_tolerance=400, skip_first_seg=True)
+    #imshow(img_class, x_axis=x_axis[x_slice])
+    #imshow(img_class, x_axis=x_axis[x_slice], x_label='read time (s)', y_label='iteration', cbar_label='RF-SET (a.u)')
+    
+    t1dict = ua.classTracesT1(img_class, x_axis, low_val=1)
+    fall_times = np.array(t1dict.get('high_fall_time'))
+    low_count = t1dict.low
+    
+    #t1 = [np.sum(np.where(fall_times > timebin, True, False)) for timebin in x_axis]
+    #ua.ajustementDeCourbe(ua.f_expDecay, x_axis, t1, p0=[0.02,600], show_plot=False)
+    
+    return tramp, fall_times, low_count, x_axis
+
+
+#res = np.empty((len(points), 3), dtype=float)
+res = []
+for i, f in uu.enumtq(points[300:]):
+    res.append(pl(f))
+  
+meas_npz.metadata['res'] = res
+# meas_file = uf.resaveArray(meas,  res)
+# meas_npz = uf.loadNpz(meas)
+#res = meas_npz.metadata['res'] # [(tramp, fall_times, low_count, x_axis), .... ]
+
+# uf.saveToNpz('smb://bob.physique.usherbrooke.ca/recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/20241101-164214-20-11_trampAB2',
+#              'readout_100ms', res)    
