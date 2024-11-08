@@ -110,6 +110,10 @@ def firstNonNanValue(array):
             return value
     return None
 
+
+def downsampleColumns(array, step):
+    return array[:,::step]
+
 #### filters
 
 # def fft(arr):
@@ -174,13 +178,26 @@ def gaussian2d(image, sigma=20, **kwargs):
 def lfilter(trace, n):
     from scipy.signal import lfilter
     if n == 0: return trace.copy()
-    
     # the larger n is, the smoother curve will be
     b = [1.0 / n] * n
     a = 1
     yy = lfilter(b, a, trace)
     return yy
 
+def filtfilt(data, order, cutoff_frequency=0.1):
+    from scipy.signal import butter, filtfilt
+    if order == 0:
+        return data
+    # Define cutoff frequency (adjustable)
+    cutoff_frequency = 0.1  # This is normalized between 0 and 1 (Nyquist frequency)
+    
+    # Create Butterworth filter coefficients
+    b, a = butter(order, cutoff_frequency, btype='low')
+    
+    # Apply filter to the data using filtfilt
+    filtered_data = filtfilt(b, a, data)
+    
+    return filtered_data
     
 def derivative2d(array, axis='xy'):
     # Calculate the derivatives along the x (columns) and y (rows) axes
@@ -260,6 +277,30 @@ def countHighLow(arr1d, high=1, low=0):
     h_prop = h_count / arr1d.size
     l_prop = l_count / arr1d.size
     return dict(high=h_prop, low=l_prop, high_count=h_count, low_count=l_count)
+
+def countHighLowTrace(arr2d, high=1, low=0):
+    """ count and return the proportion of traces that are only high or only low."""
+    
+    highs = np.all(arr2d == high, axis=1)
+    lows = np.all(arr2d == low, axis=1)
+    
+    high_count = np.sum(highs)
+    low_count = np.sum(lows)
+    exclude_count = len(arr2d) - high_count - low_count
+    
+    high_trace_prop = high_count / len(arr2d) *100
+    low_trace_prop = low_count / len(arr2d) *100
+    exclude_trace_prop = exclude_count / len(arr2d) *100
+    
+    return {
+        "high_trace_count": high_count,
+        "low_trace_count": low_count,
+        "exclude_trace_count": exclude_count,
+        "high_trace_prop": high_trace_prop,
+        "low_trace_prop": low_trace_prop,
+        "exclude_trace_prop": exclude_trace_prop
+    }
+
 
 def removeSmallSegments_lbl(boolean_array, tolerance, skip_first_seg=False):
     """Remove small segments from a boolean array (supports both 1D and 2D arrays)
@@ -382,6 +423,13 @@ def classTracesT1(arr2d, timelist, low_val=0, blip_tolerance=0):
     
     return uu.customDict(d)
 
+def computeT1(classTracesT1dict, timelist):
+    fall_times = np.array(classTracesT1dict.get('high_fall_time'))
+    points = [np.sum(np.where(fall_times > timebin, True, False)) for timebin in timelist]
+    # fit:
+    #ua.ajustementDeCourbe(ua.f_expDecay, x_axis, t1, p0=[0.02,600], show_plot=True)
+    return points
+
 def findClassifyingThreshold(double_gaussian_parameters,
                              method: Literal['min', 'mid'] = 'min'):
     """ estimate the treshold for classifying a double gaussian.
@@ -461,19 +509,29 @@ def autoClassify(array, filter_sigma=2, prominence_factor=0.03, verbose=0, on_fa
     return classified
 
 
-def autoClassifyAndRemoveBlips(array, filter_sigma=2, width_tolerance=0, prominence_factor=0.03, verbose=0, on_fail=False):
+def autoClassifyAndRemoveBlips(array, 
+                               filter_function=gaussianlbl,
+                               filter_sigma=2, 
+                               width_tolerance=0, skip_first_seg=False,
+                               prominence_factor=0.03, 
+                               verbose=0, on_fail=False):
     """ automated histogram, peaks analysis, gaussian fit then classify ON RAW ARRAY"""
-    array_smooth = gaussianlbl(array, sigma=filter_sigma)
+    array_smooth = filter_function(array, filter_sigma)
     bins, hist = histogram(array_smooth, return_type='all')
     hist_smooth = gaussian(hist, 1)
     peaks, prop = findPeaks(hist_smooth, show_plot=verbose>1, prominence=max(hist)*prominence_factor)
-
+    
     if len(peaks) == 0:
         return on_fail
     elif len(peaks) > 2 and len(peaks) < 10 and filter_sigma < 20:
         if verbose:
             print(f"More than 2 peaks found with sigma={filter_sigma}, retrying with sigma={2 * filter_sigma}")
-        return autoClassifyAndRemoveBlips(array, filter_sigma + 1, width_tolerance, prominence_factor + 0.01, verbose, on_fail)
+        return autoClassifyAndRemoveBlips(array, 
+                                          filter_function=filter_function,
+                                          filter_sigma=filter_sigma + 1,
+                                          width_tolerance=width_tolerance, 
+                                          prominence_factor=prominence_factor + 0.01, 
+                                          verbose=verbose, on_fail=on_fail)
     elif len(peaks) != 2:
         if verbose:
             print(f"Unexpected number of peaks ({len(peaks)}), can't classify.")
@@ -483,7 +541,8 @@ def autoClassifyAndRemoveBlips(array, filter_sigma=2, width_tolerance=0, promine
     dg_params = ajustementDeCourbe(f_doubleGaussian, bins, hist, p0=p0, show_plot=verbose>1)
     th = findClassifyingThreshold(dg_params, 'min')
     classified = classify(array, th)
-    classified_cleaned = removeSmallSegments_lbl(classified, tolerance=width_tolerance)
+    classified_cleaned = removeSmallSegments_lbl(classified, tolerance=width_tolerance,
+                                                 skip_first_seg=skip_first_seg)
     
     return classified_cleaned
 
@@ -636,8 +695,8 @@ def ajustementDeCourbe(function, x, y, p0=[], threshold=0,
 
     if show_plot and best_params is not None:
         plt.figure()
-        plt.plot(x, function(x, *best_params), color='red', lw=3, label='Fit')
         plt.plot(x, y, color='blue', marker='o', linestyle='None', label='Data')
+        plt.plot(x, function(x, *best_params), color='red', lw=3, label='Fit')
         
         # extract parameters names
         import inspect
@@ -661,25 +720,27 @@ def fitExpDecayLinear(x, y, verbose=False, show_plot=False, text=''):
     but with ln(y) = len(A) - 1/tau * t
              lny   =   c     + m * t
     """
-    lny = np.log(y)
-    m, c = np.polyfit(x, lny, 1)
+    x,y = np.asarray(x), np.asarray(y)
+    mask = y > 0
+    x_filtered = x[mask]
+    y_filtered = y[mask]
+    
+    lny = np.log(y_filtered)
+    m, c = np.polyfit(x_filtered, lny, 1)
     A = np.exp(c)
-    tau = -1/m
+    tau = -1 / m
 
     if verbose:
-        print(f"Linear fit results:")
+        print("Linear fit results:")
         print(f"  m: {m}")
         print(f"  c: {c}")
         print(f"  A: {A}")
         print(f"  tau: {tau}")
     
-    # Plotting if show_plot is enabled
     if show_plot:
         plt.scatter(x, y, label='Data', color='blue')
-
         fitted_y = A * np.exp(-x / tau)
         plt.plot(x, fitted_y, label=f'Fitted Curve: A*e^(-x/tau)\nA={A:.2f}, tau={tau:.2f}', color='red')
-
         plt.xlabel('x')
         plt.ylabel('y')
         plt.legend()
@@ -689,6 +750,14 @@ def fitExpDecayLinear(x, y, verbose=False, show_plot=False, text=''):
     
     return A, tau
     
+def ffit(y, x=None, n=1):
+    if x is None:
+        x = linlen(y)
+    coefficients = np.polyfit(x, y, n)
+    # Create a polynomial from the coefficients
+    polynomial = np.poly1d(coefficients)
+    return polynomial(x)
+    #return polynomial, polynomial
 #### mesures
 
 def arange(start, stop, step=1, endpoint=True):

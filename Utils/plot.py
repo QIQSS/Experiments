@@ -65,7 +65,7 @@ def _imshow_make_kwargs(
            randomize_cmap=False,
            
            scatter_points=None, # [(val, x, y), ... , ] 
-           scatter_points_label: Literal['none', 'id', 'val', 'both'] = 'none',
+           scatter_points_label: Literal['none', 'id', 'val', 'both', 'letters'] = 'none',
            scatter_size: int = 50,
            scatter_cbar: bool = False, 
            scatter_cmap: Literal['<mpl_cmap>'] = 'inferno',
@@ -247,9 +247,14 @@ def imshow(array, **kwargs):
             for idx, (x, y) in enumerate(zip(scatter_x, scatter_y)):
                 ax.text(x, y, str(idx), fontsize=11, ha='right')
         
-        if scatter_points_label in ['val', 'both']:
+        elif scatter_points_label in ['val', 'both']:
             for (x, y, c) in zip(scatter_x, scatter_y, scatter_c):
                 ax.text(x, y, f'{c:.2f}', fontsize=11, ha='right')
+        
+        elif scatter_points_label in ['letter']:
+            alphabet = uu.ModuloList('abcdefghijqlmnopqrstuvwxyz'.upper())
+            for idx, (x, y) in enumerate(zip(scatter_x, scatter_y)):
+                ax.text(x, y, alphabet[idx], fontsize=20, ha='right')
 
         if scatter_cbar:
             fig.colorbar(scatter, label=kw['scatter_cbar_label'], ax=ax, cax=scbax)
@@ -280,7 +285,9 @@ def imshow(array, **kwargs):
         
     rt = kw['return_type']
     if rt == 'fig':
-            return fig
+        return fig
+    elif rt == 'figax':
+        return fig, ax
     elif 'png':
          _figToPng(fig)
     elif 'qt':

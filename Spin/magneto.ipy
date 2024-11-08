@@ -1,4 +1,4 @@
-# %% imports
+# %% 
 import platform
 LS_PATH, LOG_PATH = \
             {'windows':['C:/Codes/Lab-Scripts', 
@@ -523,9 +523,19 @@ plt.show()
 # %%% load
 traces = np.full((151, 12, 201), np.nan, dtype=float)
 
+p1_vals = np.linspace(.6, 2, 601)
+st_vals = -0.0078*(p1_vals-0.73) + 2.978
+
+patch_delta, patch_nbpts = 0.06, 201
+initial_positions = [0.729, 0.881, 1.002, 1.11, 1.231, 1.339, 1.441, 1.545, 1.646, 1.750, 1.852, 1.949]
+patches_p1 = [np.linspace(pos-patch_delta, pos+patch_delta, patch_nbpts) for pos in initial_positions]
+
+bz_vals = np.linspace(0, 4.9, 151)
+
+
 meas, points = um.Measure.getFiles(f"{LOG_PATH}/Spin", 'magneto2')
 
-for i, f in enumerate(points):
+for i, f in uu.enumtq(points):
     npz = uf.loadNpz(f)
     traces[i] = npz.array
 #imshow(map_trace, x_axis = p1_vals, x_label='P1 (V)', y_axis=bz_vals, y_label='Bz (T)')
@@ -662,18 +672,26 @@ for i in range(len(fit_lines)-1):
     delta = trans_positions_p1[i+1] - trans_positions_p1[i]
     deltas[i] = delta
     
-    fit_params = np.polyfit(bz_vals, delta, 1)
+    mask = ~np.isnan(delta)
+    filtered_bz_vals = bz_vals[mask]
+    filtered_delta = delta[mask]
+    fit_params = np.polyfit(filtered_bz_vals, filtered_delta, 1)
+    fit_line = np.polyval(fit_params, bz_vals)
+    #print(fit_line)
     
-    factor=0.05
-    # ax.plot(bz_vals, delta - delta[0] + i*factor, linestyle='-', marker='')
-    ax.plot(bz_vals, delta + factor*i, linestyle='', marker='o')
+    offset = - fit_line[0]
+    color = plt.gca()._get_lines.get_next_color()
+    
+    ax.plot(bz_vals, delta + offset, linestyle='', marker='o', color=color, alpha=0.1)
+    ax.plot(bz_vals, fit_line + offset, linestyle='-', marker='', color=color)
+    #ax.plot(bz_vals, delta + factor*i, linestyle='', marker='o')
     
     ax.annotate(f'{i+1}->{i+2}', 
-                  xy=(0.1, ua.firstNonNanValue(delta) + factor*i), 
-                  xytext=(-0.20, ua.firstNonNanValue(delta) + factor*i),
+                  xy=(bz_vals[-1], fit_line[-1] + offset), 
+                  xytext=(1.01*bz_vals[-1], fit_line[-1] + offset),
                   fontsize=8)
     
-ax.set_ylabel('$\Delta$ P1 (V) (courbes décalées)')
+ax.set_ylabel('$\Delta$ P1 (V)')
 ax.set_xlabel('Bz (T)')
 
 #fig.legend()

@@ -4,9 +4,12 @@ from Utils import spin as us
 
 # %%
 # B=590e-3 +- 20e-6
-f, f_min, f_max = us.f_res(g=2, g_dev=8, B=0.588, B_dev=0.000)
+f, f_min, f_max = us.f_res(g=2, g_dev=2, B=0.2, B_dev=0.000)
 #1.9972
 #2.2004
 # %%
-g_eff1 = us.g_eff(18.14e9, B=0.589)
-g_eff2 = us.g_eff(16.525e9, B=0.591)
+g_eff1 = us.g_eff(18.14e9, B=0.2)
+g_eff2 = us.g_eff(16.525e9, B=0.2)
+
+# %% test
+print('hello world')

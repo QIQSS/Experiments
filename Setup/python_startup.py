@@ -14,15 +14,14 @@ def tryimport(command):
     
 # Packages:
 import numpy as np
-
-tryimport('from tqdm import tqdm')
-tryimport('from icecream import ic')
-tryimport('from pyperclip import copy, paste')
+#tryimport('from icecream import ic')
 
 # Matplotlib
 import matplotlib
 from matplotlib import pyplot as plt
-matplotlib.rcParams['figure.dpi'] = 100
+def mpldpi(val):
+    matplotlib.rcParams['figure.dpi'] = val
+mpldpi(100)
 
 # Garbage
 import gc
@@ -53,7 +52,6 @@ LS_PATH, LOG_BOB_PATH = \
                   '/run/user/1338691803/gvfs/smb-share:server=bob.physique.usherbrooke.ca,share=recherche/Dupont-Ferrier/Projets/IMEC_DD_reflecto/QBB16_SD11b_3/Spin/']}\
             [OS]
 
-
 # PyHegel:
 try:
     from pyHegel.scipy_fortran_fix import fix_problem_new
@@ -68,7 +66,7 @@ from IPython import get_ipython
 if (IPY := get_ipython()):
     IPY.run_line_magic('load_ext', 'autoreload')
     IPY.run_line_magic('autoreload', '2')
-    IPY.run_line_magic('autocall', '1')
+    IPY.run_line_magic('autocall', '2')
     IPY.run_line_magic('gui', 'qt')
     mplqt = lambda: IPY.run_line_magic('matplotlib', 'qt')
     mplil = lambda: IPY.run_line_magic('matplotlib', 'inline')
